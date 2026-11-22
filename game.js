@@ -68,22 +68,22 @@
       rivers: [{ axis: 'v', pos: 0.42 }], lakes: 1, hills: 0, bridges: 1, tunnels: 0,
     },
     {
-      id: 'twinford', name: 'Wattford', seed: 4410, target: 700, demand: 1.1, solar: 2, wind: 5, trip: 4, swing: 0.3,
+      id: 'twinford', name: 'Wattford', seed: 4410, target: 650, demand: 1.1, solar: 2, wind: 5, trip: 4, swing: 0.3,
       blurb: 'Two rivers cross in the middle of town. Sea cables are precious.',
       rivers: [{ axis: 'v', pos: 0.4 }, { axis: 'h', pos: 0.58 }], lakes: 0, hills: 0, bridges: 2, tunnels: 0,
     },
     {
-      id: 'stonehill', name: 'Ohmstone', seed: 2231, target: 900, demand: 1, solar: 2, wind: 4, trip: 3, swing: 0.35,
+      id: 'stonehill', name: 'Ohmstone', seed: 2231, target: 800, demand: 1, solar: 2, wind: 4, trip: 3, swing: 0.35,
       blurb: 'Hills block the way. Build around them or dig under.',
       rivers: [{ axis: 'v', pos: 0.66 }], lakes: 0, hills: 6, bridges: 1, tunnels: 1,
     },
     {
-      id: 'cragmoor', name: 'Faradale', seed: 9067, target: 1100, demand: 1.15, solar: 2, wind: 3, trip: 3, swing: 0.4,
+      id: 'cragmoor', name: 'Faradale', seed: 9067, target: 950, demand: 1.15, solar: 2, wind: 3, trip: 3, swing: 0.4,
       blurb: 'Rivers, lakes and hills everywhere. Every tile counts.',
       rivers: [{ axis: 'v', pos: 0.32 }, { axis: 'v', pos: 0.7 }], lakes: 2, hills: 7, bridges: 2, tunnels: 1,
     },
     {
-      id: 'voltmere', name: 'Voltmere', seed: 5521, target: 1300, demand: 1.25, solar: 1, wind: 3, trip: 2, swing: 0.45,
+      id: 'voltmere', name: 'Voltmere', seed: 5521, target: 1100, demand: 1.25, solar: 1, wind: 3, trip: 2, swing: 0.45,
       blurb: 'A string of islands. Sea cables decide everything.',
       rivers: [{ axis: 'h', pos: 0.5 }], lakes: 4, hills: 3, bridges: 3, tunnels: 1,
     },
@@ -127,6 +127,7 @@
   const ty = (i) => ((i % G.N) / G.W) | 0;
   const deck = (i) => i + G.N;
   const isDeck = (n) => n >= G.N;
+  const base = (n) => (n >= G.N ? n - G.N : n); // the tile under a node, deck or not
   const inMap = (x, y) => x >= 0 && y >= 0 && x < G.W && y < G.H;
   const inB = (x, y) => x >= G.bounds.x0 && x <= G.bounds.x1 && y >= G.bounds.y0 && y <= G.bounds.y1;
   const ekey = (a, b) => (a < b ? a * 65536 + b : b * 65536 + a);
@@ -1214,7 +1215,7 @@
   function genTypes() {
     if (G.week < G.map.solar) return ['coal'];
     if (G.week < G.map.wind) return ['coal', 'coal', 'solar'];
-    return ['coal', 'coal', 'solar', 'solar', 'wind'];
+    return ['coal', 'coal', 'coal', 'solar', 'solar', 'wind'];
   }
   // dayPhase is the clock: 0 midnight, 0.25 sunrise, 0.5 noon, 0.75 sunset. Each week starts at sunrise.
   function sunUp() { const p = dayPhase(); return p >= 0.25 && p < 0.75; }
@@ -1234,7 +1235,8 @@
   }
 
   // ---- Day and night. One day lasts one week: demand dips overnight and peaks in the evening.
-  const TRIP_AFTER = 6;         // seconds of heavy overload before a cable trips
+  const TRIP_AFTER = 9;         // seconds of heavy overload before a cable trips
+  const TRIP_GAP = 25;          // at most one trip this often, so it stays an event
   const TRIP_RESET = 12;        // seconds before a tripped cable resets on its own
   function dayPhase() { return (G.weekT / WEEK_LEN + 0.25) % 1; } // each week starts at sunrise
   function demandMult() { return 1 + G.map.swing * Math.sin(2 * Math.PI * (dayPhase() - 0.55)); } // peaks at 0.8, dips at 0.3
@@ -1246,30 +1248,43 @@
   // Sustained overload trips the breaker: the cable drops out for a while.
   // A transformer at either end protects it. Tap the gap to reset it early.
   function updateTrips(dt) {
+    // a trip whose cable was redrawn (or undone) is already fixed
+    G.trips = G.trips.filter((t) => !G.adj[t.e.a].has(t.e.b));
     for (const t of G.trips) t.left -= dt;
     for (const t of G.trips) if (t.left <= 0) restoreTrip(t);
     if (G.week < G.map.trip) return;
-    for (const e of [...G.edges.values()]) {
-      if (e.type === 'motor') continue;
-      if (e.jam > 0.75 && !G.round[e.a] && !G.round[e.b]) e.hot = (e.hot || 0) + dt;
+    G.tripCD = Math.max(0, (G.tripCD || 0) - dt);
+    // Only trunk cables trip: never a generator's own link or a substation gate.
+    const end = (n) => !isDeck(n) && G.occ[n] && (G.occ[n].kind === 'house' || G.occ[n].kind === 'port');
+    let worst = null;
+    for (const e of G.edges.values()) {
+      if (e.type === 'motor' || end(e.a) || end(e.b)) continue;
+      if (e.jam > 0.85 && !G.round[base(e.a)] && !G.round[base(e.b)]) e.hot = (e.hot || 0) + dt;
       else e.hot = Math.max(0, (e.hot || 0) - dt * 2);
-      if (e.hot > TRIP_AFTER) {
-        removeEdge(e.a, e.b, false);
-        G.trips.push({ e, left: TRIP_RESET });
-        e.hot = 0; e.jam = 0;
-        const mx = (tx(e.a) + tx(e.b)) / 2 + 0.5, my = (ty(e.a) + ty(e.b)) / 2 + 0.5;
-        G.fx.push({ type: 'poof', x: mx, y: my, t: 0 });
-        graphChanged();
-        sfx('trip');
-        if (!mechTip('trip', 'A cable stayed overloaded too long and its breaker tripped. It resets by itself after a few seconds, or tap the gap to reset it now. A transformer at either end protects a cable.')) toast('A cable tripped from overload. Tap the gap to reset it.');
-      }
+      if (e.hot > TRIP_AFTER && (!worst || e.hot > worst.hot)) worst = e;
+    }
+    if (worst && G.tripCD <= 0) {
+      const e = worst;
+      G.tripCD = TRIP_GAP;
+      removeEdge(e.a, e.b, false);
+      G.trips.push({ e, left: TRIP_RESET, occA: G.occ[base(e.a)], occB: G.occ[base(e.b)] });
+      e.hot = 0; e.jam = 0;
+      const mx = (tx(base(e.a)) + tx(base(e.b))) / 2 + 0.5, my = (ty(base(e.a)) + ty(base(e.b))) / 2 + 0.5;
+      G.fx.push({ type: 'poof', x: mx, y: my, t: 0 });
+      graphChanged();
+      sfx('trip');
+      if (!mechTip('trip', 'A cable stayed overloaded too long and its breaker tripped. It resets by itself after a few seconds, or tap the gap to reset it now. A transformer at either end protects a cable.')) toast('A cable tripped from overload. Tap the gap to reset it.');
     }
   }
 
   function restoreTrip(t) {
     G.trips = G.trips.filter((x) => x !== t);
     const { a, b, type, from } = t.e;
-    if (G.adj[a].has(b) || !G.road[a] && !G.occ[a] || !G.road[b] && !G.occ[b]) return;
+    // skip if the player rebuilt or erased it, or a tile now holds something else
+    if (G.adj[a].has(b) || !nodeValid(a) || !nodeValid(b)) return;
+    if (G.occ[base(a)] !== t.occA || G.occ[base(b)] !== t.occB) return;
+    const houseFull = (n) => G.occ[n] && G.occ[n].kind === 'house' && G.adj[n].size > 0;
+    if (houseFull(a) || houseFull(b)) return;
     const e = addEdge(a, b, type);
     if (from !== undefined) e.from = from;
     graphChanged();
@@ -1278,7 +1293,7 @@
   // The climb never stops: late weeks keep getting busier until the roads give out.
   function pinInterval(d) {
     const rush = G.rush && G.rush.color === d.color ? G.rush.mult : 1;
-    return Math.max(0.3, 3 * Math.pow(0.93, G.week - 1)) / G.map.demand / rush / demandMult();
+    return Math.max(0.15, Math.max(0.3, 3 * Math.pow(0.93, G.week - 1)) / G.map.demand / rush / demandMult());
   }
 
   // Rush hour: every building of one colour gets a burst of visitors for a short while.
@@ -1304,7 +1319,7 @@
   // When the map has no room for new houses, an old household moves out and a
   // new one (maybe a different colour) moves in, so the roads slowly go out of date.
   function churnHouse() {
-    const movable = G.houses.filter((h) => !h.bus && G.cars.every((c) => c.house !== h || c.state === 'home'));
+    const movable = G.houses.filter((h) => !h.bus && !h.battery && G.cars.every((c) => c.house !== h || c.state === 'home'));
     if (!movable.length) return;
     const h = pick(movable);
     const i = h.i;
@@ -1351,12 +1366,17 @@
 
     G.nextHouse -= dt;
     if (G.nextHouse <= 0) {
-      if (!spawnHouse(chooseHouseColor(), null)) churnHouse();
+      if (!spawnHouse(chooseHouseColor(), null) && Math.random() < 0.35) churnHouse();
       G.nextHouse = Math.max(3.4, 6.5 - 0.35 * (G.week - 1)) * rnd(0.75, 1.25);
     }
     updateRush(dt);
     updateTrips(dt);
     updateGens(dt);
+    // a heads-up shortly before sunset, when unprotected solar is feeding a town
+    if (dayPhase() > 0.68 && dayPhase() < 0.75 && G.duskWarn !== G.week) {
+      const exposed = G.houses.filter((h) => h.type === 'solar' && !h.battery && G.adj[h.i].size > 0).length;
+      if (exposed) { G.duskWarn = G.week; toast(`Sunset soon: ${exposed} solar ${exposed === 1 ? 'generator goes' : 'generators go'} offline, just as the evening peak hits.`); }
+    }
     const sun = sunUp();
     if (G.lastSun !== undefined && sun !== G.lastSun && G.houses.some((h) => h.type === 'solar')) sfx(sun ? 'dawn' : 'dusk');
     G.lastSun = sun;
@@ -1801,7 +1821,7 @@
     if (a.moved || e.type === 'pointercancel') return;
     const c = tileAtWorld(wxOf(e.clientX), wyOf(e.clientY));
     if (c < 0) return;
-    const tripped = G.trips.filter((t) => t.e.a === c || t.e.b === c);
+    const tripped = G.trips.filter((t) => base(t.e.a) === c || base(t.e.b) === c);
     if (tripped.length) { tripped.forEach(restoreTrip); sfx('reset'); toast('Breaker reset.'); return; }
     if (a.tool === 'road' && destAt(c) && !G.over) { openInspect(destAt(c)); return; }
     tapTool(a.tool, c);
@@ -2196,7 +2216,7 @@
   function drawTrips() {
     const s = cam.s;
     for (const t of G.trips) {
-      const { a, b } = t.e;
+      const a = base(t.e.a), b = base(t.e.b);
       const x1 = sx(tx(a) + 0.5), y1 = sy(ty(a) + 0.5), x2 = sx(tx(b) + 0.5), y2 = sy(ty(b) + 0.5);
       const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
       const pulse = 0.5 + 0.5 * Math.sin(performance.now() / 160);
@@ -2838,10 +2858,13 @@
     let text = `${served.length} of ${total} ${name} ${total === 1 ? 'generator' : 'generators'} can reach this town. ` +
       `${onWay} ${onWay === 1 ? 'pulse is' : 'pulses are'} on the way and ${waiting} ${waiting === 1 ? 'unit of demand is' : 'units of demand are'} waiting` +
       (stuck ? `, ${stuck} of them overloaded. ` : '. ');
+    const off = served.filter((h) => !genOnline(h)).length;
     if (!served.length) text += `Connect a ${name} generator to it.`;
+    else if (off === served.length) text += 'Every generator feeding it is offline right now. Connect a coal generator, or give one a battery.';
     else if (stuck) text += 'Overloaded cables are holding power up. A transformer or another route would help.';
     else if (waiting > 2) text += `It needs more ${name} generators connected to it.`;
     else text += "It's coping fine.";
+    if (off && off < served.length) text += ` ${off} of its generators ${off === 1 ? 'is' : 'are'} offline right now.`;
     if (stranded.length && served.length) text += ` ${stranded.length} ${name} ${stranded.length === 1 ? 'generator has' : 'generators have'} no cable to it yet.`;
     coach(text, 'Carry on', closeInspect);
     if (tut && tut.cur && tut.cur.id === 'busy') tut.inspected = true;
