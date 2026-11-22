@@ -63,27 +63,27 @@
   // appear in different spots every game.
   const MAPS = [
     {
-      id: 'millbrook', name: 'Ampton', seed: 7193, target: 500, demand: 1,
+      id: 'millbrook', name: 'Ampton', seed: 7193, target: 500, demand: 1, solar: 3, wind: 6, trip: 5, swing: 0.25,
       blurb: 'A quiet town split by one river.',
       rivers: [{ axis: 'v', pos: 0.42 }], lakes: 1, hills: 0, bridges: 1, tunnels: 0,
     },
     {
-      id: 'twinford', name: 'Wattford', seed: 4410, target: 650, demand: 1.3,
+      id: 'twinford', name: 'Wattford', seed: 4410, target: 700, demand: 1.1, solar: 2, wind: 5, trip: 4, swing: 0.3,
       blurb: 'Two rivers cross in the middle of town. Sea cables are precious.',
       rivers: [{ axis: 'v', pos: 0.4 }, { axis: 'h', pos: 0.58 }], lakes: 0, hills: 0, bridges: 2, tunnels: 0,
     },
     {
-      id: 'stonehill', name: 'Ohmstone', seed: 2231, target: 800, demand: 0.9,
+      id: 'stonehill', name: 'Ohmstone', seed: 2231, target: 900, demand: 1, solar: 2, wind: 4, trip: 3, swing: 0.35,
       blurb: 'Hills block the way. Build around them or dig under.',
       rivers: [{ axis: 'v', pos: 0.66 }], lakes: 0, hills: 6, bridges: 1, tunnels: 1,
     },
     {
-      id: 'cragmoor', name: 'Faradale', seed: 9067, target: 950, demand: 1.05,
+      id: 'cragmoor', name: 'Faradale', seed: 9067, target: 1100, demand: 1.15, solar: 2, wind: 3, trip: 3, swing: 0.4,
       blurb: 'Rivers, lakes and hills everywhere. Every tile counts.',
       rivers: [{ axis: 'v', pos: 0.32 }, { axis: 'v', pos: 0.7 }], lakes: 2, hills: 7, bridges: 2, tunnels: 1,
     },
     {
-      id: 'voltmere', name: 'Voltmere', seed: 5521, target: 1100, demand: 1.15,
+      id: 'voltmere', name: 'Voltmere', seed: 5521, target: 1300, demand: 1.25, solar: 1, wind: 3, trip: 2, swing: 0.45,
       blurb: 'A string of islands. Sea cables decide everything.',
       rivers: [{ axis: 'h', pos: 0.5 }], lakes: 4, hills: 3, bridges: 3, tunnels: 1,
     },
@@ -470,10 +470,7 @@
     if (spot < 0 && near) return spawnHouse(color, null);
     if (spot < 0) return null;
     const h = { id: G.nextId++, color, i: spot, born: G.time, type: pick(genTypes()) };
-    if (h.type !== 'coal' && !G.noted[h.type]) {
-      G.noted[h.type] = 1;
-      toast(h.type === 'solar' ? 'A solar generator appeared. It only runs in daylight.' : 'A wind generator appeared. It comes and goes. A battery keeps it running.');
-    }
+
     G.occ[spot] = { kind: 'house', h };
     G.deco[spot] = 0;
     G.houses.push(h);
@@ -1215,8 +1212,8 @@
   // ---- Generator types. Coal is steady. Solar only runs in daylight. Wind comes and goes.
   // An offline generator's cars stay parked, so a town needs a mix. A battery keeps one running.
   function genTypes() {
-    if (G.week < 2) return ['coal'];
-    if (G.week < 4) return ['coal', 'coal', 'solar'];
+    if (G.week < G.map.solar) return ['coal'];
+    if (G.week < G.map.wind) return ['coal', 'coal', 'solar'];
     return ['coal', 'coal', 'solar', 'solar', 'wind'];
   }
   function sunUp() { const p = dayPhase(); return p > 0.15 && p < 0.65; }
@@ -1236,14 +1233,14 @@
   }
 
   // ---- Day and night. One day lasts one week: demand dips overnight and peaks in the evening.
-  const TRIP_FROM_WEEK = 3;     // overloaded cables start tripping from here
   const TRIP_AFTER = 6;         // seconds of heavy overload before a cable trips
   const TRIP_RESET = 12;        // seconds before a tripped cable resets on its own
-  function dayPhase() { return (G.weekT / WEEK_LEN) % 1; }
-  function demandMult() { return 1 + 0.4 * Math.sin(2 * Math.PI * (dayPhase() - 0.3)); }
+  function dayPhase() { return (G.weekT / WEEK_LEN + 0.25) % 1; } // each week starts at sunrise
+  function demandMult() { return 1 + G.map.swing * Math.sin(2 * Math.PI * (dayPhase() - 0.3)); }
   function dayLabel() {
     const m = demandMult();
-    return m > 1.2 ? 'Evening peak' : m < 0.8 ? 'Night' : dayPhase() < 0.5 ? 'Morning' : 'Afternoon';
+    const sw = G.map.swing;
+    return m > 1 + sw * 0.6 ? 'Evening peak' : m < 1 - sw * 0.6 ? 'Night' : dayPhase() < 0.5 ? 'Morning' : 'Afternoon';
   }
 
   // Sustained overload trips the breaker: the cable drops out for a while.
@@ -1251,7 +1248,7 @@
   function updateTrips(dt) {
     for (const t of G.trips) t.left -= dt;
     for (const t of G.trips) if (t.left <= 0) restoreTrip(t);
-    if (G.week < TRIP_FROM_WEEK) return;
+    if (G.week < G.map.trip) return;
     for (const e of [...G.edges.values()]) {
       if (e.type === 'motor') continue;
       if (e.jam > 0.75 && !G.round[e.a] && !G.round[e.b]) e.hot = (e.hot || 0) + dt;
@@ -1263,7 +1260,7 @@
         const mx = (tx(e.a) + tx(e.b)) / 2 + 0.5, my = (ty(e.a) + ty(e.b)) / 2 + 0.5;
         G.fx.push({ type: 'poof', x: mx, y: my, t: 0 });
         graphChanged();
-        toast('A cable tripped from overload. Tap the gap to reset it.');
+        if (!mechTip('trip', 'A cable stayed overloaded too long and its breaker tripped. It resets by itself after a few seconds, or tap the gap to reset it now. A transformer at either end protects a cable.')) toast('A cable tripped from overload. Tap the gap to reset it.');
       }
     }
   }
@@ -1359,6 +1356,9 @@
     updateRush(dt);
     updateTrips(dt);
     updateGens(dt);
+    if (!mechSeen.solar && G.houses.some((h) => h.type === 'solar')) mechTip('solar', 'A solar generator appeared. It only runs in daylight, and while it’s dimmed its pulses stay parked. Make sure each town also has a steady source like coal.');
+    if (!mechSeen.wind && G.houses.some((h) => h.type === 'wind')) mechTip('wind', 'A wind generator appeared. It comes and goes. Batteries, one of the weekly upgrades, keep a solar or wind generator running.');
+    if (!mechSeen.day && G.week >= 2) mechTip('day', 'A day lasts a week. Demand dips overnight and peaks in the evening, so a grid that copes at night can be strained at dusk. The week bar shows the time of day.');
     G.nextDest -= dt;
     if (G.nextDest <= 0) {
       spawnNewDest();
@@ -2218,8 +2218,9 @@
   // Overnight the board dims; in the evening peak it warms up slightly.
   function drawNight() {
     const m = demandMult();
-    const dark = Math.max(0, (0.95 - m) / 0.35) * 0.3;
-    const warm = Math.max(0, (m - 1.2) / 0.2) * 0.07;
+    const sw = G.map.swing;
+    const dark = Math.max(0, (1 - sw * 0.2 - m) / (sw * 0.9)) * 0.3;
+    const warm = Math.max(0, (m - 1 - sw * 0.5) / (sw * 0.5)) * 0.07;
     if (dark <= 0 && warm <= 0) return;
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -2622,7 +2623,8 @@
     try { localStorage.setItem(SEEN_HELP_KEY, '1'); } catch (e) { /* storage unavailable */ }
     if (helpReturn) openScreen(helpReturn); else closeScreen();
   });
-  $('#btnNew').addEventListener('click', () => showMaps('sTitle'));
+  // First time through there's only one map, so skip the chooser and go straight in.
+  $('#btnNew').addEventListener('click', () => { if (getProgress().unlocked <= 1) { closeScreen(); startNew(MAPS[0]); } else showMaps('sTitle'); });
   $('#btnContinue').addEventListener('click', () => { if (load()) { tut = null; inspect = null; coach(null); closeScreen(); showHud(true); } else showMaps('sTitle'); });
   $('#btnAgain').addEventListener('click', () => { closeScreen(); startNew(G.map); });
 
@@ -2920,15 +2922,29 @@
     },
     {
       id: 'jam', pause: true, btn: 'Got it',
-      text: 'Red cables mean pulses are stuck. Stuck pulses count as waiting, so overloads fill a town’s timer. Transformers and extra routes help, and you can pick upgrades at the end of each week.',
+      text: 'Hot cables glowing amber to red are overloaded. Stuck pulses count as waiting, so overloads fill a town’s timer. Transformers and extra routes help, and you pick upgrades at the end of each week.',
       ready: (done) => done.has('more') && [...G.edges.values()].some((e) => e.jam > 0.5),
     },
     {
       id: 'end', btn: 'Play on',
-      text: 'That’s the basics. Reach 500 MW to unlock the next map. You can read all the tips again under How to play in the menu.',
+      get text() { return `That’s the basics. Reach ${fmt(G.map.target)} MW to unlock the next map. You can read all the tips again under How to play in the menu.`; },
       ready: (done) => done.has('more') && ((done.has('busy') && done.has('jam')) || G.week >= 5),
     },
   ];
+  // One-off cards the first time each new mechanic shows up, on any map.
+  let mechCur = null;
+  let mechSeen = {};
+  try { mechSeen = JSON.parse(localStorage.getItem('livewire-mech') || '{}'); } catch (e) { /* storage unavailable */ }
+  function mechTip(id, text) {
+    if (mechSeen[id] || mechCur || inspect || modal || (tut && (tut.cur || !tut.done.has('more')))) return false;
+    mechSeen[id] = 1;
+    try { localStorage.setItem('livewire-mech', JSON.stringify(mechSeen)); } catch (e) { /* storage unavailable */ }
+    mechCur = id;
+    G.paused = true;
+    hudCache = '';
+    coach(text, 'Got it', () => { mechCur = null; G.paused = false; hudCache = ''; coach(null); });
+    return true;
+  }
   function startTutorial() {
     let finished = false;
     try { finished = !!localStorage.getItem(TUT_KEY); } catch (e) { /* storage unavailable */ }
