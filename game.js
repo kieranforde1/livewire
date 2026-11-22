@@ -1260,6 +1260,7 @@
         const mx = (tx(e.a) + tx(e.b)) / 2 + 0.5, my = (ty(e.a) + ty(e.b)) / 2 + 0.5;
         G.fx.push({ type: 'poof', x: mx, y: my, t: 0 });
         graphChanged();
+        sfx('trip');
         if (!mechTip('trip', 'A cable stayed overloaded too long and its breaker tripped. It resets by itself after a few seconds, or tap the gap to reset it now. A transformer at either end protects a cable.')) toast('A cable tripped from overload. Tap the gap to reset it.');
       }
     }
@@ -1356,6 +1357,9 @@
     updateRush(dt);
     updateTrips(dt);
     updateGens(dt);
+    const sun = sunUp();
+    if (G.lastSun !== undefined && sun !== G.lastSun && G.houses.some((h) => h.type === 'solar')) sfx(sun ? 'dawn' : 'dusk');
+    G.lastSun = sun;
     if (!mechSeen.solar && G.houses.some((h) => h.type === 'solar')) mechTip('solar', 'A solar generator appeared. It only runs in daylight, and while it’s dimmed its pulses stay parked. Make sure each town also has a steady source like coal.');
     if (!mechSeen.wind && G.houses.some((h) => h.type === 'wind')) mechTip('wind', 'A wind generator appeared. It comes and goes. Batteries, one of the weekly upgrades, keep a solar or wind generator running.');
     if (!mechSeen.day && G.week >= 2) mechTip('day', 'A day lasts a week. Demand dips overnight and peaks in the evening, so a grid that copes at night can be strained at dusk. The week bar shows the time of day.');
@@ -1798,7 +1802,7 @@
     const c = tileAtWorld(wxOf(e.clientX), wyOf(e.clientY));
     if (c < 0) return;
     const tripped = G.trips.filter((t) => t.e.a === c || t.e.b === c);
-    if (tripped.length) { tripped.forEach(restoreTrip); toast('Breaker reset.'); return; }
+    if (tripped.length) { tripped.forEach(restoreTrip); sfx('reset'); toast('Breaker reset.'); return; }
     if (a.tool === 'road' && destAt(c) && !G.over) { openInspect(destAt(c)); return; }
     tapTool(a.tool, c);
     if (a.tool === 'round') {
@@ -3170,6 +3174,35 @@
     if (Math.random() < 0.2) {
       const n = chord[(Math.random() * 4) | 0] + (Math.random() < 0.5 ? 12 : 24);
       voice('sine', hz(n), tt, BEAT * 1.6, 0.04, 0.02, snd.melody);
+    }
+  }
+
+  // Grid sound effects: a zap when a breaker trips, a rising chime on reset,
+  // and soft tones as the sun sets and rises.
+  function sfx(kind) {
+    if (!soundOn || !snd.ctx || snd.ctx.state !== 'running' || !snd.master) return;
+    const t = snd.ctx.currentTime + 0.02;
+    const out = snd.master;
+    if (kind === 'trip') {
+      noiseHit(t, 'highpass', 2500, 0.22, 0.18, out);
+      const o = snd.ctx.createOscillator();
+      o.type = 'sawtooth';
+      o.frequency.setValueAtTime(520, t);
+      o.frequency.exponentialRampToValueAtTime(70, t + 0.35);
+      const g = snd.ctx.createGain();
+      g.gain.setValueAtTime(0.09, t);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.4);
+      o.connect(g); g.connect(out);
+      o.start(t); o.stop(t + 0.45);
+    } else if (kind === 'reset') {
+      voice('sine', hz(60), t, 0.35, 0.09, 0.01, out);
+      voice('sine', hz(67), t + 0.09, 0.5, 0.09, 0.01, out);
+    } else if (kind === 'dusk') {
+      voice('sine', hz(72), t, 0.9, 0.06, 0.05, out);
+      voice('sine', hz(65), t + 0.25, 1.2, 0.06, 0.05, out);
+    } else if (kind === 'dawn') {
+      voice('sine', hz(65), t, 0.9, 0.06, 0.05, out);
+      voice('sine', hz(72), t + 0.25, 1.2, 0.06, 0.05, out);
     }
   }
 
