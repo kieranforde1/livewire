@@ -1216,7 +1216,8 @@
     if (G.week < G.map.wind) return ['coal', 'coal', 'solar'];
     return ['coal', 'coal', 'solar', 'solar', 'wind'];
   }
-  function sunUp() { const p = dayPhase(); return p > 0.15 && p < 0.65; }
+  // dayPhase is the clock: 0 midnight, 0.25 sunrise, 0.5 noon, 0.75 sunset. Each week starts at sunrise.
+  function sunUp() { const p = dayPhase(); return p >= 0.25 && p < 0.75; }
   function genOnline(h) {
     if (h.battery || !h.type || h.type === 'coal') return true;
     return h.type === 'solar' ? sunUp() : h.windOn !== false;
@@ -1236,11 +1237,10 @@
   const TRIP_AFTER = 6;         // seconds of heavy overload before a cable trips
   const TRIP_RESET = 12;        // seconds before a tripped cable resets on its own
   function dayPhase() { return (G.weekT / WEEK_LEN + 0.25) % 1; } // each week starts at sunrise
-  function demandMult() { return 1 + G.map.swing * Math.sin(2 * Math.PI * (dayPhase() - 0.3)); }
+  function demandMult() { return 1 + G.map.swing * Math.sin(2 * Math.PI * (dayPhase() - 0.55)); } // peaks at 0.8, dips at 0.3
   function dayLabel() {
-    const m = demandMult();
-    const sw = G.map.swing;
-    return m > 1 + sw * 0.6 ? 'Evening peak' : m < 1 - sw * 0.6 ? 'Night' : dayPhase() < 0.5 ? 'Morning' : 'Afternoon';
+    const p = dayPhase();
+    return p < 0.25 || p >= 0.9 ? 'Night' : p < 0.5 ? 'Morning' : p < 0.7 ? 'Afternoon' : 'Evening peak';
   }
 
   // Sustained overload trips the breaker: the cable drops out for a while.
@@ -1454,15 +1454,15 @@
 
   // ---------------------------------------------------------------- upgrades
   const UPGRADES = {
-    bridges: { label: 'Sea cable', note: 'Cross water', n: 1, icon: '<svg viewBox="0 0 48 48" fill="none" stroke-linecap="round"><path d="M4 34h40" stroke="#94c6d6" stroke-width="8"/><path d="M6 24c6-8 30-8 36 0" stroke="#9b7b57" stroke-width="4"/><path d="M6 24h36" stroke="#5a5b63" stroke-width="6"/></svg>' },
-    rounds: { label: '2 transformers', note: 'Busy junctions flow better', n: 2, icon: '<svg viewBox="0 0 48 48" fill="none" stroke="#5a5b63" stroke-width="6" stroke-linecap="round"><path d="M24 4v12M24 32v12M4 24h12M32 24h12"/><circle cx="24" cy="24" r="9"/></svg>' },
-    motors: { label: 'Express line', note: 'Fast underground link', n: 1, icon: '<svg viewBox="0 0 48 48" fill="none" stroke-linecap="round"><path d="M6 34h36" stroke="#3a332b" stroke-width="3" stroke-dasharray="4 4" opacity=".55"/><path d="M4 26a8 8 0 0 1 16 0z" fill="#c3b49a"/><path d="M7 26a5 5 0 0 1 10 0z" fill="#3a332b"/><path d="M28 26a8 8 0 0 1 16 0z" fill="#c3b49a"/><path d="M31 26a5 5 0 0 1 10 0z" fill="#3a332b"/><path d="M2 26h44" stroke="#5a5b63" stroke-width="3"/></svg>' },
-    roads: { label: '20 cable tiles', note: 'More cable to lay', n: 20, icon: '<svg viewBox="0 0 48 48" fill="none" stroke="#5a5b63" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"><path d="M8 40V24h16V8h16"/></svg>' },
-    tunnels: { label: 'Underground', note: 'Go through a hill', n: 1, icon: '<svg viewBox="0 0 48 48" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M3 40 18 12l7 10 5-6 15 24z" fill="#c3b49a"/><path d="M15 40v-6a9 9 0 0 1 18 0v6z" fill="#3a332b"/><path d="M3 41h42" stroke="#5a5b63" stroke-width="4"/></svg>' },
-    entrances: { label: 'Extra substation', note: 'A second way in for a busy town', n: 1, icon: '<svg viewBox="0 0 48 48" fill="none" stroke-linejoin="round"><rect x="14" y="10" width="20" height="20" rx="4" fill="#e4572e"/><rect x="6" y="32" width="10" height="10" rx="2" fill="#9e3518"/><rect x="32" y="32" width="10" height="10" rx="2" fill="#9e3518"/></svg>' },
-    dozers: { label: 'Excavator', note: 'Clear 3 hill or water tiles', n: 3, icon: '<svg viewBox="0 0 48 48" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M6 38 18 16l8 12 4-5 12 15z" fill="#c3b49a"/><rect x="18" y="26" width="18" height="10" rx="2" fill="#e9a93a"/><path d="M14 22v16" stroke="#5a5b63" stroke-width="4"/><circle cx="22" cy="40" r="3" fill="#24262c"/><circle cx="32" cy="40" r="3" fill="#24262c"/></svg>' },
+    bridges: { label: 'Sea cable', note: 'Cross water', n: 1, icon: '<svg viewBox="0 0 48 48" fill="none" stroke-linecap="round"><path d="M4 34h40" stroke="#7ec0ff" stroke-width="8"/><path d="M6 24c6-8 30-8 36 0" stroke="#2f7fd1" stroke-width="4"/><path d="M6 24h36" stroke="#56658a" stroke-width="6"/></svg>' },
+    rounds: { label: '2 transformers', note: 'Busy junctions flow better', n: 2, icon: '<svg viewBox="0 0 48 48" fill="none" stroke-linecap="round"><path d="M4 24h8M36 24h8" stroke="#56658a" stroke-width="5"/><circle cx="19" cy="24" r="10" stroke="#ffb400" stroke-width="4"/><circle cx="29" cy="24" r="10" stroke="#ffb400" stroke-width="4"/></svg>' },
+    motors: { label: 'Express line', note: 'Fast underground link', n: 1, icon: '<svg viewBox="0 0 48 48" fill="none" stroke-linecap="round"><path d="M6 34h36" stroke="#56658a" stroke-width="3" stroke-dasharray="4 4" opacity=".55"/><path d="M4 26a8 8 0 0 1 16 0z" fill="#9aa9c9"/><path d="M7 26a5 5 0 0 1 10 0z" fill="#56658a"/><path d="M28 26a8 8 0 0 1 16 0z" fill="#9aa9c9"/><path d="M31 26a5 5 0 0 1 10 0z" fill="#56658a"/><path d="M2 26h44" stroke="#56658a" stroke-width="3"/></svg>' },
+    roads: { label: '20 cable tiles', note: 'More cable to lay', n: 20, icon: '<svg viewBox="0 0 48 48" fill="none" stroke="#56658a" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"><path d="M8 40V24h16V8h16"/></svg>' },
+    tunnels: { label: 'Underground', note: 'Go through a hill', n: 1, icon: '<svg viewBox="0 0 48 48" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M3 40 18 12l7 10 5-6 15 24z" fill="#9aa9c9"/><path d="M15 40v-6a9 9 0 0 1 18 0v6z" fill="#56658a"/><path d="M3 41h42" stroke="#56658a" stroke-width="4"/></svg>' },
+    entrances: { label: 'Extra substation', note: 'A second way in for a busy town', n: 1, icon: '<svg viewBox="0 0 48 48" fill="none" stroke-linejoin="round"><rect x="14" y="10" width="20" height="20" rx="4" fill="#ff6a4d"/><rect x="6" y="32" width="10" height="10" rx="2" fill="#a8321c"/><rect x="32" y="32" width="10" height="10" rx="2" fill="#a8321c"/></svg>' },
+    dozers: { label: 'Excavator', note: 'Clear 3 hill or water tiles', n: 3, icon: '<svg viewBox="0 0 48 48" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M6 38 18 16l8 12 4-5 12 15z" fill="#9aa9c9"/><rect x="18" y="26" width="18" height="10" rx="2" fill="#e9a93a"/><path d="M14 22v16" stroke="#56658a" stroke-width="4"/><circle cx="22" cy="40" r="3" fill="#0b0f18"/><circle cx="32" cy="40" r="3" fill="#0b0f18"/></svg>' },
     batteries: { label: '2 batteries', note: 'Keep a solar or wind generator running', n: 2, icon: '<svg viewBox="0 0 48 48" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="14" width="30" height="20" rx="4" fill="#ffc83d" stroke="#a67a0c" stroke-width="3"/><rect x="38" y="20" width="4" height="8" rx="1.5" fill="#a67a0c"/><path d="M25 17l-6 8h5l-2 6 7-9h-5z" fill="#fff"/></svg>' },
-    moves: { label: 'Move a generator', note: 'Move 2 generators somewhere better', n: 2, icon: '<svg viewBox="0 0 48 48" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="24" width="14" height="14" rx="3" fill="#e4572e" opacity=".35"/><rect x="30" y="10" width="14" height="14" rx="3" fill="#e4572e"/><path d="M14 22c2-8 8-12 14-12M24 6l4 4-4 4" stroke="#5a5b63" stroke-width="3"/></svg>' },
+    moves: { label: 'Move a generator', note: 'Move 2 generators somewhere better', n: 2, icon: '<svg viewBox="0 0 48 48" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="26" width="14" height="14" rx="3" fill="#ff6a4d" opacity=".35"/><rect x="24" y="8" width="18" height="18" rx="4" fill="#ff6a4d"/><path d="M34 11l-6 8h5l-2 6 7-9h-5z" fill="#a8321c"/><path d="M16 32c3-8 8-12 12-12" stroke="#56658a" stroke-width="3"/></svg>' },
   };
 
   function upgradeKeys() {
@@ -1964,14 +1964,14 @@
     // express tunnels run underground: a faint dashed line under everything,
     // with their cars as faint shapes, so nothing on the surface is hidden
     for (const e of motorEdges) {
-      ctx.strokeStyle = 'rgba(58,51,43,0.16)';
+      ctx.strokeStyle = 'rgba(255,212,94,0.10)';
       ctx.lineWidth = s * 0.5;
       ctx.beginPath(); line(e); ctx.stroke();
       if (e.jam > 0.06) {
         ctx.strokeStyle = `rgba(226,74,40,${Math.min(0.5, e.jam * 0.6).toFixed(3)})`;
         ctx.beginPath(); line(e); ctx.stroke();
       }
-      ctx.strokeStyle = 'rgba(58,51,43,0.45)';
+      ctx.strokeStyle = 'rgba(255,212,94,0.7)';
       ctx.lineWidth = Math.max(1.5, s * 0.08);
       ctx.setLineDash([s * 0.22, s * 0.2]);
       ctx.beginPath(); line(e); ctx.stroke();
@@ -2072,17 +2072,17 @@
         ctx.beginPath(); ctx.arc(cx, cy, s * 0.1, 0, Math.PI * 2); ctx.fill();
       }
     }
-    // overpasses: the east-west road on a raised deck
+    // crossings: the east-west cable on a raised deck
     for (let y = vy0; y <= vy1; y++) {
       for (let x = vx0; x <= vx1; x++) {
         if (!G.overpass[idx(x, y)]) continue;
         const x0 = sx(x) - s * 0.15, w = s * 1.3, yc = sy(y + 0.5);
         ctx.fillStyle = 'rgba(0,0,0,0.22)';
         ctx.fillRect(x0, yc - s * 0.3 + s * 0.12, w, s * 0.6);
-        ctx.fillStyle = '#2c2d33';
-        ctx.fillRect(x0, yc - s * 0.36, w, s * 0.72);
-        ctx.fillStyle = '#6d6e77';
-        ctx.fillRect(x0, yc - s * 0.28, w, s * 0.56);
+        ctx.fillStyle = '#0e1424';
+        ctx.fillRect(x0, yc - s * 0.3, w, s * 0.6);
+        ctx.fillStyle = PAL.road;
+        ctx.fillRect(x0, yc - s * 0.08, w, s * 0.16);
       }
     }
 
@@ -2217,10 +2217,10 @@
 
   // Overnight the board dims; in the evening peak it warms up slightly.
   function drawNight() {
-    const m = demandMult();
-    const sw = G.map.swing;
-    const dark = Math.max(0, (1 - sw * 0.2 - m) / (sw * 0.9)) * 0.3;
-    const warm = Math.max(0, (m - 1 - sw * 0.5) / (sw * 0.5)) * 0.07;
+    const p = dayPhase();
+    const night = Math.min(1, Math.max(0, -Math.sin(2 * Math.PI * (p - 0.25)) * 1.5));
+    const dusk = Math.min(1, Math.max(0, 1 - Math.abs(p - 0.78) / 0.1));
+    const dark = night * 0.3, warm = dusk * 0.07;
     if (dark <= 0 && warm <= 0) return;
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -2382,11 +2382,13 @@
         rr(px - s * 0.28, py - s * 0.28, s * 0.56, s * 0.56, s * 0.1);
         ctx.stroke();
       }
-      ctx.fillStyle = 'rgba(255,255,255,0.85)';
-      ctx.font = `700 ${Math.round(s * (d.bigPark ? 0.34 : 0.42))}px ui-rounded, -apple-system, system-ui, sans-serif`;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText('P', px, py + s * 0.02);
+      // substation: a lightning bolt on the gate
+      ctx.fillStyle = 'rgba(255,255,255,0.9)';
+      const br = s * 0.2;
+      ctx.beginPath();
+      ctx.moveTo(px + br * 0.25, py - br); ctx.lineTo(px - br * 0.6, py + br * 0.1); ctx.lineTo(px - br * 0.05, py + br * 0.1);
+      ctx.lineTo(px - br * 0.25, py + br); ctx.lineTo(px + br * 0.6, py - br * 0.1); ctx.lineTo(px + br * 0.05, py - br * 0.1);
+      ctx.closePath(); ctx.fill();
     }
 
     const waiting = waitingAt(d);
@@ -2889,7 +2891,7 @@
   const TIPS = [
     {
       id: 'road', pause: true,
-      text: 'Drag a cable from a generator to the substation marked P. Power needs a way to reach the town. The game waits until you do.',
+      text: 'Drag a cable from a generator to the town’s substation, the small square with a bolt. Power needs a way to reach the town. The game waits until you do.',
       ready: () => G.time > 0.8,
       until: () => G.houses.some((h) => !h.cut),
       hl: () => {
