@@ -234,6 +234,11 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="9" width="12" height="7" rx="1.5"/><path d="M4 7v11"/><path d="M4 12h4"/><circle cx="11" cy="19" r="1.6"/><circle cx="17" cy="19" r="1.6"/></svg>
       Excavator
     </button>
+    <button class="tool" data-tool="battery" data-res="batteries" aria-label="Battery" hidden>
+      <span class="count">0</span>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="7" width="16" height="10" rx="2.5"/><path d="M21 10.5v3"/><path d="M11.5 8.5 8.5 12h3l-1 3.5"/></svg>
+      Battery
+    </button>
     <button class="tool" data-tool="move" data-res="moves" aria-label="Move a generator" hidden>
       <span class="count">0</span>
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 14 8 10l5 4v6H3z" opacity=".45"/><path d="M11 8l5-4 5 4v6h-10z"/><path d="M6 7c1-3 3-4 5-4"/></svg>
@@ -280,6 +285,7 @@
       <li><span class="n">9</span><span>Tap a town to pause and see which generators and cables can reach it. When you&rsquo;re zoomed in, arrows at the edge of the screen point to towns that are filling up.</span></li>
       <li><span class="n">10</span><span>A day lasts a week. Demand dips at night and peaks in the evening, so the same grid is easy at 3am and strained at 7pm.</span></li>
       <li><span class="n">11</span><span>From week 3, a cable that stays overloaded trips its breaker and drops out for a few seconds. Tap the gap to reset it early. A transformer at either end protects a cable from tripping.</span></li>
+      <li><span class="n">12</span><span>Generators come in three kinds. Coal runs all the time. Solar only runs in daylight. Wind comes and goes. An offline generator&rsquo;s pulses stay parked, so each town needs a mix. A battery, one of the weekly upgrades, keeps a solar or wind generator running through the night or a lull.</span></li>
       <li><span class="n">10</span><span>Pause any time. You can still draw while paused. Pinch to zoom. If colours are hard to tell apart, turn on colour shapes in the menu.</span></li>
     </ul>
     <button class="btn" id="btnHelpDone">Got it</button>

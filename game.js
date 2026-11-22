@@ -204,7 +204,7 @@
       fx: [],
       res: {
         roads: 30, bridges: 1, tunnels: 0, rounds: 0, motors: 0,
-        entrances: 0, dozers: 0, moves: 0,
+        entrances: 0, dozers: 0, moves: 0, batteries: 0,
       },
       owned: {}, // upgrade tools picked up this game, so they stay in the toolbar
       bridgesUsed: 0,
@@ -217,6 +217,7 @@
       colorsUsed: 0,
       nextHouse: 4,
       nextDest: 32,
+      noted: {},
       trips: [],       // cables tripped by sustained overload, waiting to reset
       rush: null,      // { color, left, mult } while a rush hour is on
       nextRush: 150,
@@ -463,7 +464,11 @@
     }
     if (spot < 0 && near) return spawnHouse(color, null);
     if (spot < 0) return null;
-    const h = { id: G.nextId++, color, i: spot, born: G.time };
+    const h = { id: G.nextId++, color, i: spot, born: G.time, type: pick(genTypes()) };
+    if (h.type !== 'coal' && !G.noted[h.type]) {
+      G.noted[h.type] = 1;
+      toast(h.type === 'solar' ? 'A solar generator appeared. It only runs in daylight.' : 'A wind generator appeared. It comes and goes. A battery keeps it running.');
+    }
     G.occ[spot] = { kind: 'house', h };
     G.deco[spot] = 0;
     G.houses.push(h);
@@ -941,7 +946,7 @@
     for (const d of G.dests) {
       const waiting = d.pins - d.assigned;
       if (waiting <= 0) continue;
-      const idle = G.cars.filter((c) => c.color === d.color && c.state === 'home' && !c.retire);
+      const idle = G.cars.filter((c) => c.color === d.color && c.state === 'home' && !c.retire && genOnline(c.house));
       if (!idle.length) continue;
       const { dist, prev } = dijkstra(d.ports);
       let best = null, bd = Infinity;
@@ -1202,6 +1207,29 @@
   // ---------------------------------------------------------------- simulation
   // More visitors from the start, so you can see where traffic will build up,
   // and a gentler climb after that.
+  // ---- Generator types. Coal is steady. Solar only runs in daylight. Wind comes and goes.
+  // An offline generator's cars stay parked, so a town needs a mix. A battery keeps one running.
+  function genTypes() {
+    if (G.week < 2) return ['coal'];
+    if (G.week < 4) return ['coal', 'coal', 'solar'];
+    return ['coal', 'coal', 'solar', 'solar', 'wind'];
+  }
+  function sunUp() { const p = dayPhase(); return p > 0.15 && p < 0.65; }
+  function genOnline(h) {
+    if (h.battery || !h.type || h.type === 'coal') return true;
+    return h.type === 'solar' ? sunUp() : h.windOn !== false;
+  }
+  function updateGens(dt) {
+    for (const h of G.houses) {
+      if (h.type !== 'wind') continue;
+      h.windT = (h.windT === undefined ? rnd(10, 25) : h.windT) - dt;
+      if (h.windT <= 0) {
+        h.windOn = h.windOn === false;
+        h.windT = h.windOn ? rnd(14, 30) : rnd(7, 13);
+      }
+    }
+  }
+
   // ---- Day and night. One day lasts one week: demand dips overnight and peaks in the evening.
   const TRIP_FROM_WEEK = 3;     // overloaded cables start tripping from here
   const TRIP_AFTER = 6;         // seconds of heavy overload before a cable trips
@@ -1325,6 +1353,7 @@
     }
     updateRush(dt);
     updateTrips(dt);
+    updateGens(dt);
     G.nextDest -= dt;
     if (G.nextDest <= 0) {
       spawnNewDest();
@@ -1427,11 +1456,12 @@
     tunnels: { label: 'Underground', note: 'Go through a hill', n: 1, icon: '<svg viewBox="0 0 48 48" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M3 40 18 12l7 10 5-6 15 24z" fill="#c3b49a"/><path d="M15 40v-6a9 9 0 0 1 18 0v6z" fill="#3a332b"/><path d="M3 41h42" stroke="#5a5b63" stroke-width="4"/></svg>' },
     entrances: { label: 'Extra substation', note: 'A second way in for a busy town', n: 1, icon: '<svg viewBox="0 0 48 48" fill="none" stroke-linejoin="round"><rect x="14" y="10" width="20" height="20" rx="4" fill="#e4572e"/><rect x="6" y="32" width="10" height="10" rx="2" fill="#9e3518"/><rect x="32" y="32" width="10" height="10" rx="2" fill="#9e3518"/></svg>' },
     dozers: { label: 'Excavator', note: 'Clear 3 hill or water tiles', n: 3, icon: '<svg viewBox="0 0 48 48" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M6 38 18 16l8 12 4-5 12 15z" fill="#c3b49a"/><rect x="18" y="26" width="18" height="10" rx="2" fill="#e9a93a"/><path d="M14 22v16" stroke="#5a5b63" stroke-width="4"/><circle cx="22" cy="40" r="3" fill="#24262c"/><circle cx="32" cy="40" r="3" fill="#24262c"/></svg>' },
+    batteries: { label: '2 batteries', note: 'Keep a solar or wind generator running', n: 2, icon: '<svg viewBox="0 0 48 48" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="14" width="30" height="20" rx="4" fill="#ffc83d" stroke="#a67a0c" stroke-width="3"/><rect x="38" y="20" width="4" height="8" rx="1.5" fill="#a67a0c"/><path d="M25 17l-6 8h5l-2 6 7-9h-5z" fill="#fff"/></svg>' },
     moves: { label: 'Move a generator', note: 'Move 2 generators somewhere better', n: 2, icon: '<svg viewBox="0 0 48 48" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="24" width="14" height="14" rx="3" fill="#e4572e" opacity=".35"/><rect x="30" y="10" width="14" height="14" rx="3" fill="#e4572e"/><path d="M14 22c2-8 8-12 14-12M24 6l4 4-4 4" stroke="#5a5b63" stroke-width="3"/></svg>' },
   };
 
   function upgradeKeys() {
-    return Object.keys(UPGRADES).filter((k) => k !== 'tunnels' || G.map.hills > 0);
+    return Object.keys(UPGRADES).filter((k) => (k !== 'tunnels' || G.map.hills > 0) && (k !== 'batteries' || G.houses.some((h) => h.type && h.type !== 'coal')));
   }
 
   // Three different choices: always one of road tiles, a bridge or a tunnel,
@@ -1487,7 +1517,7 @@
     const data = {
       v: 3, map: G.map.id, targetHit: G.targetHit, W: G.W, H: G.H, roads, water, mount, rounds, overpass, deco,
       edges: [...G.edges.values(), ...G.trips.map((t) => t.e)].map((e) => [e.a, e.b, e.type === 'motor' ? 1 : 0, e.from === undefined ? -1 : e.from]),
-      houses: G.houses.map((h) => [h.i, h.color, h.bus ? 1 : 0]),
+      houses: G.houses.map((h) => [h.i, h.color, h.bus ? 1 : 0, h.type || 'coal', h.battery ? 1 : 0]),
       dests: G.dests.map((d) => [d.x, d.y, d.ports, d.color, d.pins, d.overflow, d.pinT, d.bigPark ? 1 : 0]),
       res: G.res, owned: G.owned, time: G.time, week: G.week, weekT: G.weekT, score: G.score,
       bounds: G.bounds, colorsUsed: G.colorsUsed, nextHouse: G.nextHouse, nextDest: G.nextDest,
@@ -1520,8 +1550,8 @@
       for (const p of list) G.occ[p] = { kind: 'port', d };
       G.dests.push(d);
     }
-    for (const [i, color, bus] of data.houses) {
-      const h = { id: G.nextId++, color, i, born: -10, bus: !!bus };
+    for (const [i, color, bus, type, battery] of data.houses) {
+      const h = { id: G.nextId++, color, i, born: -10, bus: !!bus, type: type || 'coal', battery: !!battery };
       G.occ[i] = { kind: 'house', h };
       G.houses.push(h);
       if (h.bus) addCar(h, true);
@@ -1652,6 +1682,18 @@
     const done = (key) => { if (G.res[key] <= 0) setTool('road'); };
     if (t === 'entrance') { if (addEntrance(c)) done('entrances'); }
     else if (t === 'dozer') { if (bulldoze(c)) done('dozers'); }
+    else if (t === 'battery') {
+      const o = G.occ[c];
+      if (!o || o.kind !== 'house') toast('Tap a generator to give it a battery.');
+      else if (o.h.type === 'coal' || !o.h.type) toast('Coal runs all the time. Give the battery to a solar or wind generator.');
+      else if (o.h.battery) toast('That generator already has a battery.');
+      else {
+        o.h.battery = true;
+        G.res.batteries--;
+        G.fx.push({ type: 'poof', x: tx(c) + 0.5, y: ty(c) + 0.5, t: 0 });
+        done('batteries');
+      }
+    }
     else if (t === 'move') {
       const o = G.occ[c];
       if (!moveFrom) {
@@ -2193,6 +2235,44 @@
     }
   }
 
+  function drawGenGlyph(h, cx, cy, size, ink) {
+    ctx.fillStyle = ink;
+    ctx.strokeStyle = ink;
+    ctx.lineCap = 'round';
+    if (h.type === 'solar') {
+      ctx.beginPath(); ctx.arc(cx, cy, size * 0.15, 0, Math.PI * 2); ctx.fill();
+      ctx.lineWidth = Math.max(1, size * 0.07);
+      ctx.beginPath();
+      for (let k = 0; k < 8; k++) {
+        const a = k * Math.PI / 4;
+        ctx.moveTo(cx + Math.cos(a) * size * 0.24, cy + Math.sin(a) * size * 0.24);
+        ctx.lineTo(cx + Math.cos(a) * size * 0.36, cy + Math.sin(a) * size * 0.36);
+      }
+      ctx.stroke();
+    } else if (h.type === 'wind') {
+      const spin = genOnline(h) ? G.time * 2.2 : 0.4;
+      ctx.lineWidth = Math.max(1, size * 0.07);
+      ctx.beginPath(); ctx.moveTo(cx, cy - size * 0.05); ctx.lineTo(cx, cy + size * 0.36); ctx.stroke();
+      ctx.beginPath();
+      for (let k = 0; k < 3; k++) {
+        const a = spin + k * Math.PI * 2 / 3;
+        ctx.moveTo(cx, cy - size * 0.05);
+        ctx.lineTo(cx + Math.sin(a) * size * 0.34, cy - size * 0.05 - Math.cos(a) * size * 0.34);
+      }
+      ctx.stroke();
+    } else {
+      ctx.beginPath();
+      ctx.moveTo(cx + size * 0.08, cy - size * 0.34);
+      ctx.lineTo(cx - size * 0.2, cy + size * 0.02);
+      ctx.lineTo(cx - size * 0.02, cy + size * 0.02);
+      ctx.lineTo(cx - size * 0.1, cy + size * 0.28);
+      ctx.lineTo(cx + size * 0.22, cy - size * 0.1);
+      ctx.lineTo(cx + size * 0.03, cy - size * 0.1);
+      ctx.closePath();
+      ctx.fill();
+    }
+  }
+
   function drawHouse(h) {
     const s = cam.s;
     const x = tx(h.i), y = ty(h.i);
@@ -2211,16 +2291,20 @@
       drawSymbol(h.color, cx, cy - size * 0.1, size * 0.2, '#fff');
     } else {
       // roof ridge
-      ctx.fillStyle = col.dark;
-      ctx.beginPath();
-      ctx.moveTo(cx + size * 0.08, cy - size * 0.34);
-      ctx.lineTo(cx - size * 0.2, cy + size * 0.02);
-      ctx.lineTo(cx - size * 0.02, cy + size * 0.02);
-      ctx.lineTo(cx - size * 0.1, cy + size * 0.28);
-      ctx.lineTo(cx + size * 0.22, cy - size * 0.1);
-      ctx.lineTo(cx + size * 0.03, cy - size * 0.1);
-      ctx.closePath();
+      drawGenGlyph(h, cx, cy, size, col.dark);
+    }
+    if (!genOnline(h)) {
+      // offline: dimmed until the sun comes up or the wind returns
+      ctx.fillStyle = 'rgba(11,15,24,0.55)';
+      rr(cx - size / 2, cy - size / 2, size, size, size * 0.22);
       ctx.fill();
+    }
+    if (h.battery) {
+      const bw = size * 0.3, bh = size * 0.17;
+      ctx.fillStyle = '#fff';
+      rr(cx + size * 0.2, cy - size * 0.58, bw, bh, bh * 0.25);
+      ctx.fill();
+      ctx.fillRect(cx + size * 0.2 + bw, cy - size * 0.58 + bh * 0.3, bh * 0.2, bh * 0.4);
     }
     // cars at home
     let home = 0;
@@ -2382,7 +2466,7 @@
     if (key === hudCache) return;
     hudCache = key;
     el.score.textContent = G.score;
-    el.scoreSub.textContent = G.targetHit ? 'trips' : `/ ${fmt(G.map.target)}`;
+    el.scoreSub.textContent = G.targetHit ? 'MW' : `/ ${fmt(G.map.target)}`;
     el.cCut.textContent = G.cutOff;
     el.cut.classList.toggle('alert', G.cutOff > 0);
     el.cut.setAttribute('aria-label', `${G.cutOff} ${G.cutOff === 1 ? 'generator' : 'generators'} cut off`);
@@ -2458,7 +2542,7 @@
     if (k && G.res[k] <= 0) {
       const names = {
         rounds: 'transformers', motors: 'express lines', entrances: 'extra substations',
-        dozers: 'excavator uses', moves: 'generator moves',
+        dozers: 'excavator uses', moves: 'generator moves', batteries: 'batteries',
       };
       toast(`No ${names[k]} left. You can pick more at the end of a week.`);
       return;
@@ -2471,6 +2555,7 @@
       entrance: 'Tap a town to add another substation.',
       dozer: 'Tap a hill or water tile to turn it into land.',
       move: 'Tap a generator, then tap where it should go.',
+      battery: 'Tap a solar or wind generator to keep it running day and night.',
     };
     if (hints[t]) toast(hints[t]);
   }));
