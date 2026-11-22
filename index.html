@@ -1,0 +1,345 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Livewire">
+<meta name="theme-color" content="#0b0f18">
+<meta name="description" content="Run cables so every town keeps its lights on. Works offline.">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" href="icons/icon-192.png">
+<title>Livewire</title>
+<style>
+  :root {
+    --ink: #0b0f18;
+    --ink-2: #1d2638;
+    --paper: #e6eefc;
+    --paper-2: #d2def4;
+    --muted: #8b8577;
+    --accent: #ffc83d;
+    --ok: #2a9d8f;
+    --font: ui-rounded, "SF Pro Rounded", -apple-system, system-ui, "Segoe UI", sans-serif;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  [hidden] { display: none !important; }
+  html, body {
+    margin: 0; height: 100%; overflow: hidden; background: var(--ink); color: var(--paper);
+    font-family: var(--font); -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
+    overscroll-behavior: none;
+  }
+  body { position: fixed; inset: 0; }
+  canvas { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; display: block; }
+  button { font-family: inherit; touch-action: manipulation; cursor: pointer; }
+
+  .bar { position: absolute; left: 0; right: 0; display: flex; align-items: center; gap: 8px; pointer-events: none; }
+  .bar > * { pointer-events: auto; }
+  #top {
+    top: 0; padding: calc(env(safe-area-inset-top) + 8px) calc(env(safe-area-inset-right) + 10px) 8px calc(env(safe-area-inset-left) + 10px);
+    justify-content: space-between; gap: 6px;
+  }
+  #btnFit { position: absolute; right: calc(env(safe-area-inset-right) + 12px); top: calc(env(safe-area-inset-top) + 62px);
+    background: rgba(11,15,24,.86); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); width: 40px; height: 40px; }
+  #btnFit svg { width: 20px; height: 20px; }
+  #btnUndo { position: absolute; left: calc(env(safe-area-inset-left) + 12px); bottom: calc(env(safe-area-inset-bottom) + 92px);
+    background: rgba(11,15,24,.86); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); width: 44px; height: 44px; }
+  #btnUndo svg { width: 21px; height: 21px; }
+  #bottom {
+    bottom: 0; padding: 8px calc(env(safe-area-inset-right) + 8px) calc(env(safe-area-inset-bottom) + 8px) calc(env(safe-area-inset-left) + 8px);
+    justify-content: center;
+  }
+  .pill { background: rgba(11,15,24,.86); border-radius: 999px; padding: 6px 12px; display: flex; align-items: center; gap: 8px;
+    -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
+  .score { gap: 4px; padding: 6px 6px 6px 12px; }
+  .score b { font-size: 19px; font-variant-numeric: tabular-nums; }
+  .score small { color: #b9b2a3; font-size: 12px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .score .sep { width: 1px; align-self: stretch; background: #4a4d56; margin: 2px 4px; }
+  .cut { display: flex; align-items: center; gap: 3px; border: 0; background: transparent; color: #8f8a7e; padding: 2px 6px 2px 2px;
+    border-radius: 999px; font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .cut svg { width: 19px; height: 19px; }
+  .cut.alert { color: #ff8a6b; }
+  .week { flex-direction: column; gap: 4px; align-items: stretch; padding: 6px 12px; }
+  .week span { font-size: 13px; font-weight: 600; text-align: center; white-space: nowrap; }
+  .prog { width: 58px; height: 4px; border-radius: 2px; background: #4a4d56; overflow: hidden; }
+  .prog i { display: block; height: 100%; width: 0; background: var(--paper); border-radius: 2px; }
+  .ctrls { padding: 3px; gap: 0; }
+  .icon-btn { width: 34px; height: 34px; border: 0; border-radius: 50%; background: transparent; color: var(--paper);
+    display: grid; place-items: center; font-size: 14px; font-weight: 700; }
+  .icon-btn:active { background: #4a4d56; }
+  .icon-btn svg { width: 18px; height: 18px; }
+
+  .toolbar { background: rgba(11,15,24,.9); border-radius: 22px; padding: 6px; display: flex; gap: 2px;
+    -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+    max-width: 100%; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+  .toolbar::-webkit-scrollbar { display: none; }
+  .toolbar.more-end { -webkit-mask-image: linear-gradient(to right, #000 82%, transparent); mask-image: linear-gradient(to right, #000 82%, transparent); }
+  .toolbar.more-start { -webkit-mask-image: linear-gradient(to left, #000 82%, transparent); mask-image: linear-gradient(to left, #000 82%, transparent); }
+  .toolbar.more-start.more-end { -webkit-mask-image: linear-gradient(to right, transparent, #000 18%, #000 82%, transparent); mask-image: linear-gradient(to right, transparent, #000 18%, #000 82%, transparent); }
+  .tool { flex: none; position: relative; width: 58px; height: 58px; border: 0; border-radius: 16px; background: transparent; color: #cfc8b8;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; font-size: 10px; font-weight: 600;
+    white-space: nowrap; padding: 0; }
+  .toolbar.six .tool { width: 55px; font-size: 9.5px; }
+  .tool svg { width: 24px; height: 24px; }
+  .tool.active { background: var(--paper); color: var(--ink); }
+  .tool:disabled { opacity: .35; }
+  .tool .count { position: absolute; top: 3px; right: 5px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px;
+    background: var(--accent); color: #fff; font-size: 11px; line-height: 18px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .tool .count.zero { background: #555862; }
+  .tool.flash .count { animation: flash .5s 2; }
+  @keyframes flash { 50% { transform: scale(1.35); background: #ff2d2d; } }
+
+  @media (orientation: landscape) and (max-height: 540px) {
+    #top { padding-top: calc(env(safe-area-inset-top) + 6px); padding-bottom: 0; }
+    #bottom { top: 0; bottom: 0; left: auto; right: 0; flex-direction: column; justify-content: center;
+      padding: calc(env(safe-area-inset-top) + 56px) calc(env(safe-area-inset-right) + 8px) calc(env(safe-area-inset-bottom) + 8px) 8px; }
+    .toolbar { flex-direction: column; border-radius: 20px; max-height: 100%; overflow-x: hidden; overflow-y: auto; }
+    .tool, .toolbar.six .tool { width: 62px; height: 44px; font-size: 9.5px; gap: 1px; }
+    .tool svg { width: 20px; height: 20px; }
+    .tool .count { top: 1px; right: 3px; }
+    #btnFit { right: calc(env(safe-area-inset-right) + 92px); top: calc(env(safe-area-inset-top) + 54px); }
+    #btnUndo { bottom: calc(env(safe-area-inset-bottom) + 12px); }
+  }
+  .maplist { display: flex; flex-direction: column; gap: 8px; margin: 6px 0 4px; text-align: left; }
+  .mapcard { display: flex; gap: 12px; align-items: flex-start; border: 0; background: #fff; border-radius: 16px; padding: 12px 14px;
+    color: var(--ink); text-align: left; font-family: inherit; }
+  .mapcard:disabled { background: transparent; border: 1.5px dashed #d3c9b5; color: #8b8577; }
+  .mapcard:not(:disabled):active { transform: scale(.98); }
+  .mapnum { flex: none; width: 30px; height: 30px; border-radius: 50%; background: var(--ink); color: var(--paper); display: grid;
+    place-items: center; font-weight: 800; font-size: 15px; margin-top: 2px; }
+  .mapcard:disabled .mapnum { background: #e3dac8; color: #8b8577; }
+  .mapnum svg { width: 16px; height: 16px; }
+  .maptext { display: flex; flex-direction: column; gap: 3px; }
+  .maptext b { font-size: 17px; }
+  .maptext small { font-size: 13.5px; line-height: 1.35; color: #5d594f; }
+  .mapcard:disabled .maptext small { color: #9b958a; }
+  .maptext em { font-style: normal; font-size: 12.5px; font-weight: 700; color: #2a9d8f; }
+  .mapcard:disabled .maptext em { color: #8b8577; }
+  #toast { position: absolute; left: 50%; top: calc(env(safe-area-inset-top) + 64px); transform: translateX(-50%) translateY(-8px);
+    background: var(--paper); color: var(--ink); padding: 8px 14px; border-radius: 12px; font-size: 14px; font-weight: 600;
+    opacity: 0; transition: opacity .2s, transform .2s; pointer-events: none; max-width: 86vw; text-align: center; }
+  #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  body.coaching #toast { top: calc(env(safe-area-inset-top) + 190px); }
+  #coach { position: absolute; left: 50%; top: calc(env(safe-area-inset-top) + 62px); transform: translateX(-50%);
+    width: min(360px, calc(100vw - 24px)); background: var(--paper); color: var(--ink); border-radius: 16px;
+    padding: 12px 14px; box-shadow: 0 10px 30px rgba(0,0,0,.28); font-size: 15px; line-height: 1.4; }
+  #coach p { margin: 0; }
+  .coach-row { display: flex; justify-content: flex-end; align-items: center; gap: 12px; margin-top: 10px; }
+  .coach-row:not(:has(button:not([hidden]))) { display: none; }
+  #coach .btn { width: auto; margin: 0; padding: 9px 16px; font-size: 15px; }
+  .coach-skip { background: none; border: 0; color: var(--muted); font: inherit; font-size: 14px; font-weight: 600; padding: 6px; margin-right: auto; }
+
+  .screen { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; padding: 24px;
+    padding-top: calc(env(safe-area-inset-top) + 24px); padding-bottom: calc(env(safe-area-inset-bottom) + 24px);
+    background: rgba(24,25,30,.62); -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px); }
+  .screen.show { display: flex; }
+  .card { background: var(--paper); color: var(--ink); border-radius: 24px; padding: 26px 22px 22px; width: 100%; max-width: 360px;
+    max-height: 100%; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,.35); text-align: center; }
+  .card h1 { font-size: 40px; margin: 0 0 4px; letter-spacing: -0.5px; }
+  .card h2 { font-size: 26px; margin: 0 0 6px; }
+  .card p { margin: 0 0 14px; line-height: 1.4; color: #4d4a42; font-size: 15px; }
+  .card .lede { font-size: 16px; color: #5d594f; }
+  .btn { display: block; width: 100%; border: 0; border-radius: 14px; padding: 14px; font-size: 17px; font-weight: 700; margin-top: 10px;
+    background: var(--ink); color: var(--paper); }
+  .btn.secondary { background: var(--paper-2); color: var(--ink); }
+  .btn:active { transform: scale(.98); }
+  .small { font-size: 13px !important; color: var(--muted) !important; margin: 14px 0 0 !important; }
+  .offline { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: var(--muted); margin-top: 16px; }
+  .offline i { width: 8px; height: 8px; border-radius: 50%; background: #c9b98f; display: inline-block; }
+  .offline.ready { color: var(--ok); }
+  .offline.ready i { background: var(--ok); }
+  .steps { text-align: left; margin: 8px 0 6px; padding: 0; list-style: none; }
+  .steps li { display: flex; gap: 12px; align-items: flex-start; margin-bottom: 12px; font-size: 15px; line-height: 1.4; color: #3d3a33; }
+  .steps li span.n { flex: none; width: 24px; height: 24px; border-radius: 50%; background: var(--ink); color: var(--paper); font-size: 13px;
+    font-weight: 700; display: grid; place-items: center; margin-top: 1px; }
+  .choices { display: flex; gap: 8px; margin-top: 8px; }
+  .choice { flex: 1 1 0; min-width: 0; border: 2px solid transparent; background: #fff; border-radius: 18px; padding: 14px 6px 12px; color: var(--ink);
+    display: flex; flex-direction: column; align-items: center; gap: 8px; font-size: 15px; font-weight: 700; }
+  .choice svg { width: 40px; height: 40px; flex: none; }
+  .choice span { font-size: 14px; line-height: 1.2; }
+  .choice small { font-weight: 500; font-size: 11.5px; color: #6c675c; line-height: 1.3; }
+  .choice:active { border-color: var(--ink); }
+  .bigscore { font-size: 54px; font-weight: 800; line-height: 1; margin: 6px 0 2px; font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div id="top" class="bar" hidden>
+  <div class="pill score">
+    <b id="score">0</b><small id="scoreSub">MW</small>
+    <span class="sep"></span>
+    <button class="cut" id="cutPill" aria-label="Generators cut off">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11.5 12 5l8 6.5V20H4z"/><path d="M3 21 21 3"/></svg>
+      <span id="cCut">0</span>
+    </button>
+  </div>
+  <div class="pill week"><span id="weekLabel">Week 1</span><div class="prog"><i id="weekBar"></i></div></div>
+  <div class="pill ctrls">
+    <button class="icon-btn" id="btnPause" aria-label="Pause"></button>
+    <button class="icon-btn" id="btnSpeed" aria-label="Speed">1×</button>
+    <button class="icon-btn" id="btnMenu" aria-label="Menu">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+    </button>
+  </div>
+</div>
+<button class="icon-btn" id="btnUndo" aria-label="Undo last cable change" hidden>
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>
+</button>
+<button class="icon-btn" id="btnFit" aria-label="Zoom out to see the whole town" hidden>
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4H4v5M15 4h5v5M9 20H4v-5M15 20h5v-5"/></svg>
+</button>
+
+<div id="bottom" class="bar" hidden>
+  <div class="toolbar">
+    <button class="tool active" data-tool="road" aria-label="Cable">
+      <span class="count" id="cRoads">0</span>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 20c0-6 3-8 7-8s7-2 7-8"/><circle cx="5" cy="20" r="1.4" fill="currentColor"/><circle cx="19" cy="4" r="1.4" fill="currentColor"/></svg>
+      Cable
+    </button>
+    <button class="tool" data-tool="erase" aria-label="Erase">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 20h12"/><path d="M5.5 15.5 14 7a2 2 0 0 1 2.8 0l2.2 2.2a2 2 0 0 1 0 2.8L12 19H8.5l-3-3a.7.7 0 0 1 0-.5z"/><path d="m10 11 5 5"/></svg>
+      Erase
+    </button>
+    <button class="tool" data-info="bridge" id="bridgeTool" aria-label="Sea cables">
+      <span class="count" id="cBridges">0</span>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 10h20"/><path d="M4 10c2.5 4 13.5 4 16 0"/><path d="M7 10v9M17 10v9"/><path d="M2 20h3M10 20h4M19 20h3" stroke-width="1.6"/></svg>
+      Sea cable
+    </button>
+    <button class="tool" data-info="tunnel" id="tunnelTool" aria-label="Underground cables" hidden>
+      <span class="count" id="cTunnels">0</span>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 20 9 6l4 5.5L16 8l6 12z"/><path d="M9 20v-2.5a3 3 0 0 1 6 0V20"/></svg>
+      Underground
+    </button>
+    <!-- Upgrade tools: shown once you have picked one up this game -->
+    <button class="tool" data-tool="round" data-res="rounds" aria-label="Transformer" hidden>
+      <span class="count" id="cRounds">0</span>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="5"/><path d="M12 2v5M12 17v5M2 12h5M17 12h5"/></svg>
+      Transformer
+    </button>
+    <button class="tool" data-tool="motor" data-res="motors" aria-label="Express line" hidden>
+      <span class="count" id="cMotors">0</span>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12a4 4 0 0 1 8 0"/><path d="M14 12a4 4 0 0 1 8 0"/><path d="M6 16h12" stroke-dasharray="2 2.6"/></svg>
+      Express
+    </button>
+    <button class="tool" data-tool="entrance" data-res="entrances" aria-label="Extra substation" hidden>
+      <span class="count">0</span>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"><rect x="7" y="4" width="10" height="10" rx="2"/><rect x="2.5" y="16" width="5" height="5" rx="1" fill="currentColor"/><rect x="16.5" y="16" width="5" height="5" rx="1" fill="currentColor"/></svg>
+      Substation
+    </button>
+    <button class="tool" data-tool="dozer" data-res="dozers" aria-label="Excavator" hidden>
+      <span class="count">0</span>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="9" width="12" height="7" rx="1.5"/><path d="M4 7v11"/><path d="M4 12h4"/><circle cx="11" cy="19" r="1.6"/><circle cx="17" cy="19" r="1.6"/></svg>
+      Excavator
+    </button>
+    <button class="tool" data-tool="move" data-res="moves" aria-label="Move a generator" hidden>
+      <span class="count">0</span>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 14 8 10l5 4v6H3z" opacity=".45"/><path d="M11 8l5-4 5 4v6h-10z"/><path d="M6 7c1-3 3-4 5-4"/></svg>
+      Move
+    </button>
+  </div>
+</div>
+
+<div id="toast"></div>
+<div id="coach" hidden>
+  <p id="coachText"></p>
+  <div class="coach-row">
+    <button class="coach-skip" id="coachSkip" hidden>Skip tips</button>
+    <button class="btn" id="coachBtn" hidden></button>
+  </div>
+</div>
+
+<!-- Title -->
+<div class="screen" id="sTitle">
+  <div class="card">
+    <h1>Livewire</h1>
+    <p class="lede">Run cables so every town keeps its lights on.</p>
+    <button class="btn" id="btnContinue" hidden>Continue</button>
+    <button class="btn" id="btnNew">New game</button>
+    <button class="btn secondary" id="btnHowTitle">How to play</button>
+    <p class="small" id="bestLine"></p>
+    <div class="offline" id="offline"><i></i><span>Checking offline play…</span></div>
+  </div>
+</div>
+
+<!-- How to play -->
+<div class="screen" id="sHelp">
+  <div class="card">
+    <h2>How to play</h2>
+    <ul class="steps">
+      <li><span class="n">1</span><span>Drag your finger from a generator to a town of the same colour to lay a cable.</span></li>
+      <li><span class="n">2</span><span>Towns show white dots when they need demand. A ring means a pulse is on its way.</span></li>
+      <li><span class="n">3</span><span>If too many dots wait with no pulse coming, or with their pulse overloaded, the town starts to pulse and a timer fills. You have about a minute to fix it. When it's full, the game ends.</span></li>
+      <li><span class="n">4</span><span>Cable tiles run out. Each week you get more, and you pick one of three upgrades, like transformers, express lines or a excavator. New tools appear in your toolbar, and tapping one tells you how to use it.</span></li>
+      <li><span class="n">5</span><span>The crossed-out generator at the top counts generators with no cable to their town. They pulse on the map, and so does any town that no matching generator can reach yet.</span></li>
+      <li><span class="n">6</span><span>Reach a map's MW target to unlock the next, harder map.</span></li>
+      <li><span class="n">7</span><span>Cables turn red where pulses are overloaded. That's where a transformer or a new route will help most.</span></li>
+      <li><span class="n">8</span><span>Made a mistake? The undo button, bottom left, takes back your last cable change.</span></li>
+      <li><span class="n">9</span><span>Tap a town to pause and see which generators and cables can reach it. When you&rsquo;re zoomed in, arrows at the edge of the screen point to towns that are filling up.</span></li>
+      <li><span class="n">10</span><span>Pause any time. You can still draw while paused. Pinch to zoom. If colours are hard to tell apart, turn on colour shapes in the menu.</span></li>
+    </ul>
+    <button class="btn" id="btnHelpDone">Got it</button>
+  </div>
+</div>
+
+<!-- Upgrade -->
+<div class="screen" id="sUpgrade">
+  <div class="card">
+    <h2 id="upTitle">Week 2</h2>
+    <p id="upText">You've got 15 more cable tiles. Pick one upgrade.</p>
+    <div class="choices" id="choices"></div>
+  </div>
+</div>
+
+<!-- Menu -->
+<div class="screen" id="sMenu">
+  <div class="card">
+    <h2>Paused</h2>
+    <button class="btn" id="btnResume">Resume</button>
+    <button class="btn secondary" id="btnHowMenu">How to play</button>
+    <button class="btn secondary" id="btnRestart">Restart this map</button>
+    <button class="btn secondary" id="btnMenuMaps">Choose a map</button>
+    <button class="btn secondary" id="btnSound">Sound: on</button>
+    <button class="btn secondary" id="btnShapes" aria-describedby="shapesNote">Colour shapes: off</button>
+    <p class="small" id="shapesNote">Adds a shape to each colour, so generators and towns are easier to match if colours are hard to tell apart.</p>
+    <div class="offline" id="offline2"><i></i><span></span></div>
+  </div>
+</div>
+
+<!-- Map picker -->
+<div class="screen" id="sMaps">
+  <div class="card">
+    <h2>Choose a map</h2>
+    <div class="maplist" id="mapList"></div>
+    <button class="btn secondary" id="btnMapsBack">Back</button>
+  </div>
+</div>
+
+<!-- Target reached -->
+<div class="screen" id="sTarget">
+  <div class="card">
+    <h2 id="tgTitle">Map unlocked</h2>
+    <p id="tgText"></p>
+    <button class="btn" id="btnTgNext">Play the next map</button>
+    <button class="btn secondary" id="btnTgStay">Keep playing here</button>
+  </div>
+</div>
+
+<!-- Game over -->
+<div class="screen" id="sOver">
+  <div class="card">
+    <h2>Gridlock</h2>
+    <p id="overWhy"></p>
+    <div class="bigscore" id="overScore">0</div>
+    <p id="overSub">MW</p>
+    <p class="small" id="overBest"></p>
+    <button class="btn" id="btnAgain">Play again</button>
+    <button class="btn secondary" id="btnOverMaps">Choose a map</button>
+  </div>
+</div>
+
+<script src="game.js"></script>
+</body>
+</html>
