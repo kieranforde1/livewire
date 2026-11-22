@@ -3052,5 +3052,5 @@
   requestAnimationFrame(frame);
 
   // exposed for testing in the browser console
-  window.__byways = { get G() { return G; }, get tut() { return tut; }, get inspect() { return inspect; }, tutTick, openInspect, closeInspect, render, snd, audioStart, audioTick, landAreas, cam, step, tryConnect, idx, findPath, save, load, sx, sy, MAPS, user, startNew, getProgress, addEntrance, bulldoze, moveHouse, canGo, nodeFor, deck, showUpgrade, dispatch };
+  window.__livewire = { get G() { return G; }, get tut() { return tut; }, get inspect() { return inspect; }, tutTick, openInspect, closeInspect, render, snd, audioStart, audioTick, landAreas, cam, step, tryConnect, idx, findPath, save, load, sx, sy, MAPS, user, startNew, getProgress, addEntrance, bulldoze, moveHouse, canGo, nodeFor, deck, showUpgrade, dispatch };
 })();
