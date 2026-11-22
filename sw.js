@@ -6,7 +6,7 @@
 //
 // To ship an update, change VERSION. Phones fetch this file when they open the
 // game online, see it changed, and download the new set in the background.
-const VERSION = 'v10';
+const VERSION = 'v11';
 const CACHE = 'livewire-' + VERSION;
 const ASSETS = [
   './',

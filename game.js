@@ -217,6 +217,7 @@
       colorsUsed: 0,
       nextHouse: 4,
       nextDest: 32,
+      trips: [],       // cables tripped by sustained overload, waiting to reset
       rush: null,      // { color, left, mult } while a rush hour is on
       nextRush: 150,
       dispatchT: 0,
@@ -1201,10 +1202,52 @@
   // ---------------------------------------------------------------- simulation
   // More visitors from the start, so you can see where traffic will build up,
   // and a gentler climb after that.
+  // ---- Day and night. One day lasts one week: demand dips overnight and peaks in the evening.
+  const TRIP_FROM_WEEK = 3;     // overloaded cables start tripping from here
+  const TRIP_AFTER = 6;         // seconds of heavy overload before a cable trips
+  const TRIP_RESET = 12;        // seconds before a tripped cable resets on its own
+  function dayPhase() { return (G.weekT / WEEK_LEN) % 1; }
+  function demandMult() { return 1 + 0.4 * Math.sin(2 * Math.PI * (dayPhase() - 0.3)); }
+  function dayLabel() {
+    const m = demandMult();
+    return m > 1.2 ? 'Evening peak' : m < 0.8 ? 'Night' : dayPhase() < 0.5 ? 'Morning' : 'Afternoon';
+  }
+
+  // Sustained overload trips the breaker: the cable drops out for a while.
+  // A transformer at either end protects it. Tap the gap to reset it early.
+  function updateTrips(dt) {
+    for (const t of G.trips) t.left -= dt;
+    for (const t of G.trips) if (t.left <= 0) restoreTrip(t);
+    if (G.week < TRIP_FROM_WEEK) return;
+    for (const e of [...G.edges.values()]) {
+      if (e.type === 'motor') continue;
+      if (e.jam > 0.75 && !G.round[e.a] && !G.round[e.b]) e.hot = (e.hot || 0) + dt;
+      else e.hot = Math.max(0, (e.hot || 0) - dt * 2);
+      if (e.hot > TRIP_AFTER) {
+        removeEdge(e.a, e.b, false);
+        G.trips.push({ e, left: TRIP_RESET });
+        e.hot = 0; e.jam = 0;
+        const mx = (tx(e.a) + tx(e.b)) / 2 + 0.5, my = (ty(e.a) + ty(e.b)) / 2 + 0.5;
+        G.fx.push({ type: 'poof', x: mx, y: my, t: 0 });
+        graphChanged();
+        toast('A cable tripped from overload. Tap the gap to reset it.');
+      }
+    }
+  }
+
+  function restoreTrip(t) {
+    G.trips = G.trips.filter((x) => x !== t);
+    const { a, b, type, from } = t.e;
+    if (G.adj[a].has(b) || !G.road[a] && !G.occ[a] || !G.road[b] && !G.occ[b]) return;
+    const e = addEdge(a, b, type);
+    if (from !== undefined) e.from = from;
+    graphChanged();
+  }
+
   // The climb never stops: late weeks keep getting busier until the roads give out.
   function pinInterval(d) {
     const rush = G.rush && G.rush.color === d.color ? G.rush.mult : 1;
-    return Math.max(0.3, 3 * Math.pow(0.93, G.week - 1)) / G.map.demand / rush;
+    return Math.max(0.3, 3 * Math.pow(0.93, G.week - 1)) / G.map.demand / rush / demandMult();
   }
 
   // Rush hour: every building of one colour gets a burst of visitors for a short while.
@@ -1224,7 +1267,7 @@
     const mult = 2 + Math.min(1.5, (G.week - RUSH_FROM_WEEK) * 0.08);
     G.rush = { color, left: 18, mult };
     G.nextRush = rnd(55, 80) * Math.max(0.5, 1 - (G.week - RUSH_FROM_WEEK) * 0.02);
-    toast(`Peak demand: ${COLORS[color].name} towns are getting busy.`);
+    toast(`Demand surge: ${COLORS[color].name} towns are drawing more power.`);
   }
 
   // When the map has no room for new houses, an old household moves out and a
@@ -1281,6 +1324,7 @@
       G.nextHouse = Math.max(3.4, 6.5 - 0.35 * (G.week - 1)) * rnd(0.75, 1.25);
     }
     updateRush(dt);
+    updateTrips(dt);
     G.nextDest -= dt;
     if (G.nextDest <= 0) {
       spawnNewDest();
@@ -1442,7 +1486,7 @@
     }
     const data = {
       v: 3, map: G.map.id, targetHit: G.targetHit, W: G.W, H: G.H, roads, water, mount, rounds, overpass, deco,
-      edges: [...G.edges.values()].map((e) => [e.a, e.b, e.type === 'motor' ? 1 : 0, e.from === undefined ? -1 : e.from]),
+      edges: [...G.edges.values(), ...G.trips.map((t) => t.e)].map((e) => [e.a, e.b, e.type === 'motor' ? 1 : 0, e.from === undefined ? -1 : e.from]),
       houses: G.houses.map((h) => [h.i, h.color, h.bus ? 1 : 0]),
       dests: G.dests.map((d) => [d.x, d.y, d.ports, d.color, d.pins, d.overflow, d.pinT, d.bigPark ? 1 : 0]),
       res: G.res, owned: G.owned, time: G.time, week: G.week, weekT: G.weekT, score: G.score,
@@ -1706,6 +1750,8 @@
     if (a.moved || e.type === 'pointercancel') return;
     const c = tileAtWorld(wxOf(e.clientX), wyOf(e.clientY));
     if (c < 0) return;
+    const tripped = G.trips.filter((t) => t.e.a === c || t.e.b === c);
+    if (tripped.length) { tripped.forEach(restoreTrip); toast('Breaker reset.'); return; }
     if (a.tool === 'road' && destAt(c) && !G.over) { openInspect(destAt(c)); return; }
     tapTool(a.tool, c);
     if (a.tool === 'round') {
@@ -2062,6 +2108,47 @@
     drawTipHighlights();
     drawInspect();
     drawEdgeArrows();
+    drawTrips();
+    drawNight();
+  }
+
+  function drawTrips() {
+    const s = cam.s;
+    for (const t of G.trips) {
+      const { a, b } = t.e;
+      const x1 = sx(tx(a) + 0.5), y1 = sy(ty(a) + 0.5), x2 = sx(tx(b) + 0.5), y2 = sy(ty(b) + 0.5);
+      const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
+      const pulse = 0.5 + 0.5 * Math.sin(performance.now() / 160);
+      // dashed ghost of the missing cable, with a flashing bolt in the gap
+      ctx.save();
+      ctx.strokeStyle = `rgba(255,106,77,${0.35 + 0.3 * pulse})`;
+      ctx.lineWidth = s * 0.3;
+      ctx.setLineDash([s * 0.18, s * 0.18]);
+      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = `rgba(255,106,77,${0.8 + 0.2 * pulse})`;
+      ctx.beginPath(); ctx.arc(mx, my, s * (0.3 + 0.05 * pulse), 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#fff';
+      const r = s * 0.2;
+      ctx.beginPath();
+      ctx.moveTo(mx + r * 0.25, my - r); ctx.lineTo(mx - r * 0.6, my + r * 0.1); ctx.lineTo(mx - r * 0.05, my + r * 0.1);
+      ctx.lineTo(mx - r * 0.25, my + r); ctx.lineTo(mx + r * 0.6, my - r * 0.1); ctx.lineTo(mx + r * 0.05, my - r * 0.1);
+      ctx.closePath(); ctx.fill();
+      ctx.restore();
+    }
+  }
+
+  // Overnight the board dims; in the evening peak it warms up slightly.
+  function drawNight() {
+    const m = demandMult();
+    const dark = Math.max(0, (0.95 - m) / 0.35) * 0.3;
+    const warm = Math.max(0, (m - 1.2) / 0.2) * 0.07;
+    if (dark <= 0 && warm <= 0) return;
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.fillStyle = dark > 0 ? `rgba(2,4,16,${dark.toFixed(3)})` : `rgba(255,170,60,${warm.toFixed(3)})`;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.restore();
   }
 
   function drawCars(motor) {
@@ -2301,7 +2388,7 @@
     el.cut.setAttribute('aria-label', `${G.cutOff} ${G.cutOff === 1 ? 'generator' : 'generators'} cut off`);
     el.btnFit.hidden = !zoomed;
     el.btnUndo.hidden = !undoStack.length && !(pendingSnap && pendingSnap.ver !== G.gver);
-    el.weekLabel.textContent = `Week ${G.week}`;
+    el.weekLabel.textContent = `Week ${G.week} · ${dayLabel()}`;
     el.cRoads.textContent = G.res.roads;
     el.cRoads.classList.toggle('zero', G.res.roads === 0);
     // upgrade tools only appear once you've picked them up this game
