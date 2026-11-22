@@ -82,6 +82,11 @@
       blurb: 'Rivers, lakes and hills everywhere. Every tile counts.',
       rivers: [{ axis: 'v', pos: 0.32 }, { axis: 'v', pos: 0.7 }], lakes: 2, hills: 7, bridges: 2, tunnels: 1,
     },
+    {
+      id: 'voltmere', name: 'Voltmere', seed: 5521, target: 1100, demand: 1.15,
+      blurb: 'A string of islands. Sea cables decide everything.',
+      rivers: [{ axis: 'h', pos: 0.5 }], lakes: 4, hills: 3, bridges: 3, tunnels: 1,
+    },
   ];
 
   function mulberry32(seed) {
@@ -1976,27 +1981,53 @@
     drawCars(true);
     ctx.globalAlpha = 1;
     // bridge decks
-    ctx.strokeStyle = PAL.bridge;
-    ctx.lineWidth = s * 0.74;
+    // sea cables: a lit channel under the cable
+    ctx.strokeStyle = 'rgba(74,168,255,0.35)';
+    ctx.lineWidth = s * 0.5;
     ctx.beginPath();
     for (const e of roadEdges) if (G.water[e.a] || G.water[e.b]) line(e);
     ctx.stroke();
+    // cables are thin lines with a soft glow, not fat roads
+    ctx.strokeStyle = 'rgba(120,170,255,0.13)';
+    ctx.lineWidth = s * 0.62;
+    ctx.beginPath();
+    for (const e of roadEdges) line(e);
+    ctx.stroke();
     ctx.strokeStyle = PAL.roadEdge;
-    ctx.lineWidth = s * 0.6;
+    ctx.lineWidth = s * 0.26;
     ctx.beginPath();
     for (const e of roadEdges) line(e);
     ctx.stroke();
     ctx.strokeStyle = PAL.road;
-    ctx.lineWidth = s * 0.5;
+    ctx.lineWidth = s * 0.15;
     ctx.beginPath();
     for (const e of roadEdges) line(e);
     ctx.stroke();
-    // jams: roads where cars are crawling turn red
-    ctx.lineWidth = s * 0.5;
+    // current flowing along every cable
+    ctx.strokeStyle = 'rgba(210,230,255,0.45)';
+    ctx.lineWidth = Math.max(1, s * 0.05);
+    ctx.setLineDash([s * 0.12, s * 0.38]);
+    ctx.lineDashOffset = -(G.time * s * 0.7) % (s * 0.5);
+    ctx.beginPath();
+    for (const e of roadEdges) line(e);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    // overload: cables run hot, glowing amber then red
+    ctx.lineWidth = s * 0.2;
     for (const e of roadEdges) {
       if (!(e.jam > 0.06)) continue;
-      ctx.strokeStyle = `rgba(226,74,40,${Math.min(0.8, e.jam * 0.9).toFixed(3)})`;
+      const g = Math.round(200 - 120 * Math.min(1, e.jam));
+      ctx.strokeStyle = `rgba(255,${g},60,${Math.min(0.95, 0.3 + e.jam * 0.7).toFixed(3)})`;
       ctx.beginPath(); line(e); ctx.stroke();
+    }
+    // junction posts
+    ctx.fillStyle = PAL.road;
+    for (const e of roadEdges) {
+      for (const n of [e.a, e.b]) {
+        if (G.adj[n] && G.adj[n].size >= 3 && !G.round[n]) {
+          ctx.beginPath(); ctx.arc(sx(tx(n) + 0.5), sy(ty(n) + 0.5), s * 0.16, 0, Math.PI * 2); ctx.fill();
+        }
+      }
     }
     // one-way arrows
     ctx.strokeStyle = 'rgba(255,255,255,0.75)';
@@ -2019,7 +2050,7 @@
       for (let x = vx0; x <= vx1; x++) {
         const i = idx(x, y);
         if (G.road[i] && G.adj[i].size === 0) {
-          ctx.beginPath(); ctx.arc(sx(x + 0.5), sy(y + 0.5), s * 0.27, 0, Math.PI * 2); ctx.fill();
+          ctx.beginPath(); ctx.arc(sx(x + 0.5), sy(y + 0.5), s * 0.13, 0, Math.PI * 2); ctx.fill();
         }
       }
     }
@@ -2029,12 +2060,16 @@
         const i = idx(x, y);
         if (!G.round[i]) continue;
         const cx = sx(x + 0.5), cy = sy(y + 0.5);
-        ctx.fillStyle = PAL.roadEdge;
-        ctx.beginPath(); ctx.arc(cx, cy, s * 0.5, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = PAL.road;
-        ctx.beginPath(); ctx.arc(cx, cy, s * 0.45, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = '#a9c58a';
-        ctx.beginPath(); ctx.arc(cx, cy, s * 0.17, 0, Math.PI * 2); ctx.fill();
+        // transformer: a coil of rings with a bright core
+        ctx.fillStyle = '#10182a';
+        ctx.beginPath(); ctx.arc(cx, cy, s * 0.42, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = '#ffd45e';
+        ctx.lineWidth = Math.max(1.5, s * 0.07);
+        ctx.beginPath(); ctx.arc(cx, cy, s * 0.36, 0, Math.PI * 2); ctx.stroke();
+        ctx.lineWidth = Math.max(1, s * 0.04);
+        ctx.beginPath(); ctx.arc(cx, cy, s * 0.25, 0, Math.PI * 2); ctx.stroke();
+        ctx.fillStyle = '#ffd45e';
+        ctx.beginPath(); ctx.arc(cx, cy, s * 0.1, 0, Math.PI * 2); ctx.fill();
       }
     }
     // overpasses: the east-west road on a raised deck
