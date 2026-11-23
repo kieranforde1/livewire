@@ -1380,7 +1380,7 @@
     const sun = sunUp();
     if (G.lastSun !== undefined && sun !== G.lastSun && G.houses.some((h) => h.type === 'solar')) sfx(sun ? 'dawn' : 'dusk');
     G.lastSun = sun;
-    if (!mechSeen.solar && G.houses.some((h) => h.type === 'solar')) mechTip('solar', 'This is a solar generator. It only works in daylight. At night it goes dim and sends nothing, so each town needs some coal too.');
+    if (!mechSeen.solar && G.houses.some((h) => h.type === 'solar')) mechTip('solar', 'This is a solar generator. It only works in daylight. At night it goes dim and sends nothing. Coal works day and night, and a battery keeps solar running overnight.');
     if (!mechSeen.wind && G.houses.some((h) => h.type === 'wind')) mechTip('wind', 'This is a wind generator. It stops when the wind drops. Batteries keep solar and wind generators running.');
     if (!mechSeen.day && dayPhase() > 0.62 && dayPhase() < 0.75) mechTip('day', 'Evening is coming. Demand is highest in the evening and lowest at night. The bar at the top shows the time of day.');
     G.nextDest -= dt;
@@ -2263,15 +2263,24 @@
       ctx.translate(sx(p.x), sy(p.y));
       ctx.rotate(p.ang);
       const L = s * (c.bus ? 0.6 : 0.36), Wd = s * (c.bus ? 0.25 : 0.21);
-      // a glowing pulse of charge: halo, core, bright centre (bigger for a surge)
       const rad = c.bus ? Wd * 0.95 : Wd * 0.62;
-      ctx.fillStyle = col.fill;
-      ctx.globalAlpha = 0.22;
-      ctx.beginPath(); ctx.arc(0, 0, rad * 2, 0, Math.PI * 2); ctx.fill();
-      ctx.globalAlpha = 1;
-      ctx.beginPath(); ctx.arc(0, 0, rad, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = 'rgba(255,255,255,0.85)';
-      ctx.beginPath(); ctx.arc(0, 0, rad * 0.42, 0, Math.PI * 2); ctx.fill();
+      const a0 = ctx.globalAlpha;
+      if (c.leg === 'back') {
+        // spent: an empty ring heading home to recharge
+        ctx.strokeStyle = col.fill;
+        ctx.globalAlpha = a0 * 0.6;
+        ctx.lineWidth = Math.max(1, s * 0.04);
+        ctx.beginPath(); ctx.arc(0, 0, rad * 0.75, 0, Math.PI * 2); ctx.stroke();
+      } else {
+        // charged: a glowing pulse carrying power to a town
+        ctx.fillStyle = col.fill;
+        ctx.globalAlpha = a0 * 0.22;
+        ctx.beginPath(); ctx.arc(0, 0, rad * 2, 0, Math.PI * 2); ctx.fill();
+        ctx.globalAlpha = a0;
+        ctx.beginPath(); ctx.arc(0, 0, rad, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = 'rgba(255,255,255,0.85)';
+        ctx.beginPath(); ctx.arc(0, 0, rad * 0.42, 0, Math.PI * 2); ctx.fill();
+      }
       ctx.restore();
     }
   }
@@ -2858,7 +2867,7 @@
     const waiting = Math.round(waitingAt(d));
     const stuck = d.late || 0;
     const total = served.length + stranded.length;
-    let text = `${served.length} of ${total} ${name} ${total === 1 ? 'generator' : 'generators'} can reach this town. ` +
+    let text = `${served.length} of ${total} ${name} ${total === 1 ? 'generator' : 'generators'} can reach this town, with ${served.length * CARS_PER_HOUSE} pulses between them. ` +
       `${onWay} ${onWay === 1 ? 'pulse is' : 'pulses are'} on the way and ${waiting} ${waiting === 1 ? 'unit of demand is' : 'units of demand are'} waiting` +
       (stuck ? `, ${stuck} of them overloaded. ` : '. ');
     const off = served.filter((h) => !genOnline(h)).length;
@@ -2935,7 +2944,7 @@
     },
     {
       id: 'more', btn: 'Got it',
-      text: 'Power is flowing. Connect the other generators too. New ones keep appearing, and flash until they have a cable.',
+      text: 'Power is flowing. Each generator holds two pulses, the white dots on it. A pulse carries power to the town, then goes back empty to recharge. The more generators a town has, the faster it gets power. Connect the others too.',
       ready: (done) => done.has('road'),
       until: () => G.cutOff === 0 && G.houses.length > 3,
     },
