@@ -64,27 +64,27 @@
   const MAPS = [
     {
       id: 'millbrook', name: 'Ampton', seed: 7193, target: 500, demand: 1, solar: 3, wind: 6, trip: 5, swing: 0.25,
-      blurb: 'A quiet town split by one river.',
+      blurb: 'One river runs through town.',
       rivers: [{ axis: 'v', pos: 0.42 }], lakes: 1, hills: 0, bridges: 1, tunnels: 0,
     },
     {
       id: 'twinford', name: 'Wattford', seed: 4410, target: 650, demand: 1.1, solar: 2, wind: 5, trip: 4, swing: 0.3,
-      blurb: 'Two rivers cross in the middle of town. Sea cables are precious.',
+      blurb: 'Two rivers cross in the middle. You only get a few sea cables.',
       rivers: [{ axis: 'v', pos: 0.4 }, { axis: 'h', pos: 0.58 }], lakes: 0, hills: 0, bridges: 2, tunnels: 0,
     },
     {
       id: 'stonehill', name: 'Ohmstone', seed: 2231, target: 800, demand: 1, solar: 2, wind: 4, trip: 3, swing: 0.35,
-      blurb: 'Hills block the way. Build around them or dig under.',
+      blurb: 'Hills get in the way. Go round them or under them.',
       rivers: [{ axis: 'v', pos: 0.66 }], lakes: 0, hills: 6, bridges: 1, tunnels: 1,
     },
     {
       id: 'cragmoor', name: 'Faradale', seed: 9067, target: 950, demand: 1.15, solar: 2, wind: 3, trip: 3, swing: 0.4,
-      blurb: 'Rivers, lakes and hills everywhere. Every tile counts.',
+      blurb: 'Rivers, lakes and hills, and not much open ground.',
       rivers: [{ axis: 'v', pos: 0.32 }, { axis: 'v', pos: 0.7 }], lakes: 2, hills: 7, bridges: 2, tunnels: 1,
     },
     {
       id: 'voltmere', name: 'Voltmere', seed: 5521, target: 1100, demand: 1.25, solar: 1, wind: 3, trip: 2, swing: 0.45,
-      blurb: 'A string of islands. Sea cables decide everything.',
+      blurb: 'A row of islands. Most cables have to cross water.',
       rivers: [{ axis: 'h', pos: 0.5 }], lakes: 4, hills: 3, bridges: 3, tunnels: 1,
     },
   ];
@@ -725,8 +725,8 @@
   }
 
   function placeRoundabout(i) {
-    if (G.res.rounds <= 0) { toast('No transformers left. You can win more at the end of a week.'); return false; }
-    if (!G.road[i] || rough(i) || G.round[i] || G.occ[i]) { toast('Tap a cable junction to place a transformer.'); return false; }
+    if (G.res.rounds <= 0) { toast('No transformers left. You can pick more at the end of the day.'); return false; }
+    if (!G.road[i] || rough(i) || G.round[i] || G.occ[i]) { toast('Tap a point where cables meet to place a transformer.'); return false; }
     G.round[i] = 1;
     G.res.rounds--;
     graphChanged();
@@ -1176,8 +1176,8 @@
       const ax = tx(a) + 0.5, ay = ty(a) + 0.5, bx = tx(b) + 0.5, by = ty(b) + 0.5;
       const f = clamp(car.t / car.len, 0, 1);
       const dx = (bx - ax) / car.len, dy = (by - ay) / car.len;
-      // keep left; the second lane of a one-way road is on the right
-      const off = (car.motor ? 0.13 : 0.12) * (car.lane ? -1 : 1);
+      // pulses run down the middle of the cable; a doubled cable carries two side by side
+      const off = car.lane ? -0.07 : 0;
       return { x: ax + (bx - ax) * f + dy * off, y: ay + (by - ay) * f - dx * off, ang: Math.atan2(dy, dx) };
     }
     if (car.state === 'wait' && car.path && !G.occ[car.path[0]]) {
@@ -1273,7 +1273,7 @@
       G.fx.push({ type: 'poof', x: mx, y: my, t: 0 });
       graphChanged();
       sfx('trip');
-      if (!mechTip('trip', 'A cable stayed overloaded too long and its breaker tripped. It resets by itself after a few seconds, or tap the gap to reset it now. A transformer at either end protects a cable.')) toast('A cable tripped from overload. Tap the gap to reset it.');
+      if (!mechTip('trip', 'A cable carried too much for too long, so its breaker tripped. It comes back on by itself in a few seconds, or tap the gap to reset it now. Transformers stop cables tripping.')) toast('A cable tripped. Tap the gap to reset it.');
     }
   }
 
@@ -1313,7 +1313,7 @@
     const mult = 2 + Math.min(1.5, (G.week - RUSH_FROM_WEEK) * 0.08);
     G.rush = { color, left: 18, mult };
     G.nextRush = rnd(55, 80) * Math.max(0.5, 1 - (G.week - RUSH_FROM_WEEK) * 0.02);
-    toast(`Demand surge: ${COLORS[color].name} towns are drawing more power.`);
+    toast(`Demand surge in the ${COLORS[color].name} towns.`);
   }
 
   // When the map has no room for new houses, an old household moves out and a
@@ -1375,14 +1375,14 @@
     // a heads-up shortly before sunset, when unprotected solar is feeding a town
     if (dayPhase() > 0.68 && dayPhase() < 0.75 && G.duskWarn !== G.week) {
       const exposed = G.houses.filter((h) => h.type === 'solar' && !h.battery && G.adj[h.i].size > 0).length;
-      if (exposed) { G.duskWarn = G.week; toast(`Sunset soon: ${exposed} solar ${exposed === 1 ? 'generator goes' : 'generators go'} offline, just as the evening peak hits.`); }
+      if (exposed) { G.duskWarn = G.week; toast(`Sunset soon. ${exposed} solar ${exposed === 1 ? 'generator stops' : 'generators stop'} until morning.`); }
     }
     const sun = sunUp();
     if (G.lastSun !== undefined && sun !== G.lastSun && G.houses.some((h) => h.type === 'solar')) sfx(sun ? 'dawn' : 'dusk');
     G.lastSun = sun;
-    if (!mechSeen.solar && G.houses.some((h) => h.type === 'solar')) mechTip('solar', 'A solar generator appeared. It only runs in daylight, and while it’s dimmed its pulses stay parked. Make sure each town also has a steady source like coal.');
-    if (!mechSeen.wind && G.houses.some((h) => h.type === 'wind')) mechTip('wind', 'A wind generator appeared. It comes and goes. Batteries, one of the weekly upgrades, keep a solar or wind generator running.');
-    if (!mechSeen.day && G.week >= 2) mechTip('day', 'A day lasts a week. Demand dips overnight and peaks in the evening, so a grid that copes at night can be strained at dusk. The week bar shows the time of day.');
+    if (!mechSeen.solar && G.houses.some((h) => h.type === 'solar')) mechTip('solar', 'This is a solar generator. It only works in daylight. At night it goes dim and sends nothing, so each town needs some coal too.');
+    if (!mechSeen.wind && G.houses.some((h) => h.type === 'wind')) mechTip('wind', 'This is a wind generator. It stops when the wind drops. Batteries keep solar and wind generators running.');
+    if (!mechSeen.day && dayPhase() > 0.62 && dayPhase() < 0.75) mechTip('day', 'Evening is coming. Demand is highest in the evening and lowest at night. The bar at the top shows the time of day.');
     G.nextDest -= dt;
     if (G.nextDest <= 0) {
       spawnNewDest();
@@ -1444,11 +1444,11 @@
     if (next) p.unlocked = Math.max(p.unlocked, i + 2);
     setProgress(p);
     if (!isNew) {
-      toast(`Target reached: ${fmt(G.map.target)} MW in ${G.map.name}. Keep going for a best score.`);
+      toast(`Target reached in ${G.map.name}. Play on for a best score.`);
       return;
     }
     $('#tgTitle').textContent = `${next.name} unlocked`;
-    $('#tgText').textContent = `You made ${fmt(G.map.target)} MW in ${G.map.name}. Next up: ${next.blurb.charAt(0).toLowerCase() + next.blurb.slice(1)}`;
+    $('#tgText').textContent = `You made ${fmt(G.map.target)} MW in ${G.map.name}. ${next.name} is next. ${next.blurb}`;
     const go = $('#btnTgNext');
     go.textContent = `Play ${next.name}`;
     go.onclick = () => { save(); closeScreen(); startNew(next); };
@@ -1470,7 +1470,7 @@
       if (G !== game) return; // a new game started in the meantime
       $('#overWhy').textContent = `The ${COLORS[d.color].name} town in ${game.map.name} went without power for too long.`;
       $('#overScore').textContent = game.score;
-      $('#overSub').textContent = `MW in ${game.week} ${game.week === 1 ? 'week' : 'weeks'}`;
+      $('#overSub').textContent = `MW in ${game.week} ${game.week === 1 ? 'day' : 'days'}`;
       $('#overBest').textContent = !prev ? '' : game.score > prev ? `New best for ${game.map.name}.` : `Best in ${game.map.name}: ${prev} MW`;
       openScreen('sOver');
     }, 1400);
@@ -1479,7 +1479,7 @@
   // ---------------------------------------------------------------- upgrades
   const UPGRADES = {
     bridges: { label: 'Sea cable', note: 'Cross water', n: 1, icon: '<svg viewBox="0 0 48 48" fill="none" stroke-linecap="round"><path d="M4 34h40" stroke="#7ec0ff" stroke-width="8"/><path d="M6 24c6-8 30-8 36 0" stroke="#2f7fd1" stroke-width="4"/><path d="M6 24h36" stroke="#56658a" stroke-width="6"/></svg>' },
-    rounds: { label: '2 transformers', note: 'Busy junctions flow better', n: 2, icon: '<svg viewBox="0 0 48 48" fill="none" stroke-linecap="round"><path d="M4 24h8M36 24h8" stroke="#56658a" stroke-width="5"/><circle cx="19" cy="24" r="10" stroke="#ffb400" stroke-width="4"/><circle cx="29" cy="24" r="10" stroke="#ffb400" stroke-width="4"/></svg>' },
+    rounds: { label: '2 transformers', note: 'Busy joins flow better, and never trip', n: 2, icon: '<svg viewBox="0 0 48 48" fill="none" stroke-linecap="round"><path d="M4 24h8M36 24h8" stroke="#56658a" stroke-width="5"/><circle cx="19" cy="24" r="10" stroke="#ffb400" stroke-width="4"/><circle cx="29" cy="24" r="10" stroke="#ffb400" stroke-width="4"/></svg>' },
     motors: { label: 'Express line', note: 'Fast underground link', n: 1, icon: '<svg viewBox="0 0 48 48" fill="none" stroke-linecap="round"><path d="M6 34h36" stroke="#56658a" stroke-width="3" stroke-dasharray="4 4" opacity=".55"/><path d="M4 26a8 8 0 0 1 16 0z" fill="#9aa9c9"/><path d="M7 26a5 5 0 0 1 10 0z" fill="#56658a"/><path d="M28 26a8 8 0 0 1 16 0z" fill="#9aa9c9"/><path d="M31 26a5 5 0 0 1 10 0z" fill="#56658a"/><path d="M2 26h44" stroke="#56658a" stroke-width="3"/></svg>' },
     roads: { label: '20 cable tiles', note: 'More cable to lay', n: 20, icon: '<svg viewBox="0 0 48 48" fill="none" stroke="#56658a" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"><path d="M8 40V24h16V8h16"/></svg>' },
     tunnels: { label: 'Underground', note: 'Go through a hill', n: 1, icon: '<svg viewBox="0 0 48 48" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M3 40 18 12l7 10 5-6 15 24z" fill="#9aa9c9"/><path d="M15 40v-6a9 9 0 0 1 18 0v6z" fill="#56658a"/><path d="M3 41h42" stroke="#56658a" stroke-width="4"/></svg>' },
@@ -1509,8 +1509,8 @@
   }
 
   function showUpgrade() {
-    $('#upTitle').textContent = `Week ${G.week}`;
-    $('#upText').textContent = 'Your town is growing. You get 15 more cable tiles, and you can pick one upgrade.';
+    $('#upTitle').textContent = `Day ${G.week}`;
+    $('#upText').textContent = 'A new day. You get 15 more cable tiles. Pick one upgrade.';
     const box = $('#choices');
     box.innerHTML = '';
     for (const k of pickUpgrades()) {
@@ -1661,7 +1661,7 @@
   }
 
   function lastFeedback(res) {
-    if (res === 'roads') { toast('Out of cable tiles. Erase some, or wait for next week.'); flashCount('road'); }
+    if (res === 'roads') { toast('Out of cable. Erase some, or wait for the next day.'); flashCount('road'); }
     else if (res === 'bridges') { toast('You need a sea cable to cross water.'); flashCount('bridge'); }
     else if (res === 'tunnels') { toast(G.map.hills ? 'You need an underground cable to go through a hill.' : 'Hills block cables.'); flashCount('tunnel'); }
     else if (res === 'long') toast(`That's too long. Sea cables and underground cables can be up to ${MAX_SPAN} tiles.`);
@@ -1828,7 +1828,7 @@
     if (a.tool === 'round') {
       if (placeRoundabout(c) && G.res.rounds <= 0) setTool('road');
     } else if (a.tool === 'motor') {
-      if (G.res.motors <= 0) { toast('No express lines left. You can win more at the end of a week.'); return; }
+      if (G.res.motors <= 0) { toast('No express lines left. You can pick more at the end of the day.'); return; }
       if (motorStart < 0) {
         const k = kind(c);
         if ((k === 'road' || k === 'land') && !rough(c) && inB(tx(c), ty(c))) { motorStart = c; toast('Now tap where the underground cable should come out.'); }
@@ -2044,15 +2044,6 @@
       ctx.strokeStyle = `rgba(255,${g},60,${Math.min(0.95, 0.3 + e.jam * 0.7).toFixed(3)})`;
       ctx.beginPath(); line(e); ctx.stroke();
     }
-    // junction posts
-    ctx.fillStyle = PAL.road;
-    for (const e of roadEdges) {
-      for (const n of [e.a, e.b]) {
-        if (G.adj[n] && G.adj[n].size >= 3 && !G.round[n]) {
-          ctx.beginPath(); ctx.arc(sx(tx(n) + 0.5), sy(ty(n) + 0.5), s * 0.16, 0, Math.PI * 2); ctx.fill();
-        }
-      }
-    }
     // one-way arrows
     ctx.strokeStyle = 'rgba(255,255,255,0.75)';
     ctx.lineWidth = Math.max(1.2, s * 0.06);
@@ -2096,17 +2087,23 @@
         ctx.beginPath(); ctx.arc(cx, cy, s * 0.1, 0, Math.PI * 2); ctx.fill();
       }
     }
-    // crossings: the east-west cable on a raised deck
+    // crossings
     for (let y = vy0; y <= vy1; y++) {
       for (let x = vx0; x <= vx1; x++) {
         if (!G.overpass[idx(x, y)]) continue;
-        const x0 = sx(x) - s * 0.15, w = s * 1.3, yc = sy(y + 0.5);
-        ctx.fillStyle = 'rgba(0,0,0,0.22)';
-        ctx.fillRect(x0, yc - s * 0.3 + s * 0.12, w, s * 0.6);
-        ctx.fillStyle = '#0e1424';
-        ctx.fillRect(x0, yc - s * 0.3, w, s * 0.6);
-        ctx.fillStyle = PAL.road;
-        ctx.fillRect(x0, yc - s * 0.08, w, s * 0.16);
+        // the east-west cable hops over the north-south one
+        const xc = sx(x + 0.5), yc = sy(y + 0.5);
+        ctx.fillStyle = PAL.land;
+        ctx.beginPath(); ctx.arc(xc, yc, s * 0.2, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = PAL.road;
+        ctx.lineWidth = s * 0.15;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(sx(x) - s * 0.05, yc);
+        ctx.lineTo(xc - s * 0.3, yc);
+        ctx.arc(xc, yc, s * 0.3, Math.PI, 0);
+        ctx.lineTo(sx(x + 1) + s * 0.05, yc);
+        ctx.stroke();
       }
     }
 
@@ -2393,20 +2390,26 @@
     const col = COLORS[d.color];
     const cx = sx(d.x + 1), cy = sy(d.y + 1);
     const w = s * 1.76 * k;
-    // car park entrances
+    // substations: a cable from the town to a round terminal with a bolt on it
     for (const port of d.ports) {
       const px = sx(tx(port) + 0.5), py = sy(ty(port) + 0.5);
+      ctx.lineCap = 'round';
+      ctx.strokeStyle = 'rgba(120,170,255,0.13)';
+      ctx.lineWidth = s * 0.62;
+      ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(px, py); ctx.stroke();
+      ctx.strokeStyle = col.dark;
+      ctx.lineWidth = s * 0.2;
+      ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(px, py); ctx.stroke();
       ctx.fillStyle = col.dark;
-      ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(px, py); ctx.lineWidth = s * 0.5; ctx.strokeStyle = col.dark; ctx.stroke();
-      rr(px - s * 0.36, py - s * 0.36, s * 0.72, s * 0.72, s * 0.14);
-      ctx.fill();
+      ctx.beginPath(); ctx.arc(px, py, s * 0.32, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = col.fill;
+      ctx.lineWidth = Math.max(1, s * 0.06);
+      ctx.beginPath(); ctx.arc(px, py, s * 0.32, 0, Math.PI * 2); ctx.stroke();
       if (d.bigPark) {
         ctx.strokeStyle = 'rgba(255,255,255,0.8)';
-        ctx.lineWidth = Math.max(1, s * 0.05);
-        rr(px - s * 0.28, py - s * 0.28, s * 0.56, s * 0.56, s * 0.1);
-        ctx.stroke();
+        ctx.lineWidth = Math.max(1, s * 0.04);
+        ctx.beginPath(); ctx.arc(px, py, s * 0.42, 0, Math.PI * 2); ctx.stroke();
       }
-      // substation: a lightning bolt on the gate
       ctx.fillStyle = 'rgba(255,255,255,0.9)';
       const br = s * 0.2;
       ctx.beginPath();
@@ -2534,7 +2537,7 @@
     el.cut.setAttribute('aria-label', `${G.cutOff} ${G.cutOff === 1 ? 'generator' : 'generators'} cut off`);
     el.btnFit.hidden = !zoomed;
     el.btnUndo.hidden = !undoStack.length && !(pendingSnap && pendingSnap.ver !== G.gver);
-    el.weekLabel.textContent = `Week ${G.week} · ${dayLabel()}`;
+    el.weekLabel.textContent = `Day ${G.week} · ${dayLabel()}`;
     el.cRoads.textContent = G.res.roads;
     el.cRoads.classList.toggle('zero', G.res.roads === 0);
     // upgrade tools only appear once you've picked them up this game
@@ -2606,7 +2609,7 @@
         rounds: 'transformers', motors: 'express lines', entrances: 'extra substations',
         dozers: 'excavator uses', moves: 'generator moves', batteries: 'batteries',
       };
-      toast(`No ${names[k]} left. You can pick more at the end of a week.`);
+      toast(`No ${names[k]} left. You can pick more at the end of the day.`);
       return;
     }
     setTool(t);
@@ -2860,11 +2863,11 @@
       (stuck ? `, ${stuck} of them overloaded. ` : '. ');
     const off = served.filter((h) => !genOnline(h)).length;
     if (!served.length) text += `Connect a ${name} generator to it.`;
-    else if (off === served.length) text += 'Every generator feeding it is offline right now. Connect a coal generator, or give one a battery.';
+    else if (off === served.length) text += 'Every generator feeding it is off right now. Connect a coal generator, or give one a battery.';
     else if (stuck) text += 'Overloaded cables are holding power up. A transformer or another route would help.';
     else if (waiting > 2) text += `It needs more ${name} generators connected to it.`;
     else text += "It's coping fine.";
-    if (off && off < served.length) text += ` ${off} of its generators ${off === 1 ? 'is' : 'are'} offline right now.`;
+    if (off && off < served.length) text += ` ${off} of its generators ${off === 1 ? 'is' : 'are'} off right now.`;
     if (stranded.length && served.length) text += ` ${stranded.length} ${name} ${stranded.length === 1 ? 'generator has' : 'generators have'} no cable to it yet.`;
     coach(text, 'Carry on', closeInspect);
     if (tut && tut.cur && tut.cur.id === 'busy') tut.inspected = true;
@@ -2918,7 +2921,7 @@
   const TIPS = [
     {
       id: 'road', pause: true,
-      text: 'Drag a cable from a generator to the town’s substation, the small square with a bolt. Power needs a way to reach the town. The game waits until you do.',
+      text: 'Drag a cable from a generator to the round bolt next to the town. The game waits until you do.',
       ready: () => G.time > 0.8,
       until: () => G.houses.some((h) => !h.cut),
       hl: () => {
@@ -2932,31 +2935,31 @@
     },
     {
       id: 'more', btn: 'Got it',
-      text: 'Now pulses carry demand to the town. Connect the other generators too. New generators keep appearing, and pulse until they have a cable.',
+      text: 'Power is flowing. Connect the other generators too. New ones keep appearing, and flash until they have a cable.',
       ready: (done) => done.has('road'),
       until: () => G.cutOff === 0 && G.houses.length > 3,
     },
     {
       id: 'bridge', btn: 'Got it',
-      text: 'A generator still has no cable. If water is in the way, draw straight across it and a sea cable is built for you. The toolbar shows how many sea cables you have.',
+      text: 'This generator can’t be reached over land. Draw straight across the water and a sea cable is built for you. The toolbar shows how many you have left.',
       ready: (done) => done.has('more') && G.bridgesUsed === 0 && G.houses.some((h) => h.cut && G.time - h.born > 10),
       until: () => G.bridgesUsed > 0,
     },
     {
       id: 'busy', pause: true,
-      text: 'This town is getting busy: the ripples mean units of demand are waiting. Tap the town to see which generators and cables feed it.',
+      text: 'The rings round this town mean it’s waiting for power. Tap it to see what feeds it.',
       ready: (done) => done.has('more') && G.dests.some((d) => urgencyOf(d) > 0),
       until: () => tut.inspected && !inspect,
       hl: () => { const d = busiest(); return d ? [{ x: d.x + 1, y: d.y + 1, r: 1.7 }] : []; },
     },
     {
       id: 'jam', pause: true, btn: 'Got it',
-      text: 'Hot cables glowing amber to red are overloaded. Stuck pulses count as waiting, so overloads fill a town’s timer. Transformers and extra routes help, and you pick upgrades at the end of each week.',
+      text: 'Cables turn amber, then red, when they carry too much. Pulses stuck on them still count as waiting. A transformer or a second route helps. You pick an upgrade at the end of each day.',
       ready: (done) => done.has('more') && [...G.edges.values()].some((e) => e.jam > 0.5),
     },
     {
       id: 'end', btn: 'Play on',
-      get text() { return `That’s the basics. Reach ${fmt(G.map.target)} MW to unlock the next map. You can read all the tips again under How to play in the menu.`; },
+      get text() { return `Reach ${fmt(G.map.target)} MW to unlock the next map. The tips are under How to play in the menu.`; },
       ready: (done) => done.has('more') && ((done.has('busy') && done.has('jam')) || G.week >= 5),
     },
   ];

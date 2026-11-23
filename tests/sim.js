@@ -1,6 +1,6 @@
 // Headless simulation test: plays every map with a simple bot and checks the
 // game's invariants, save/load and speed. Needs Playwright (npm i playwright).
-//   node tests/sim.js [weeks=12]
+//   node tests/sim.js [days=12]
 const path = require('path');
 const { chromium } = require('playwright');
 const WEEKS = +process.argv[2] || 12;
@@ -105,7 +105,7 @@ const URL = 'file://' + path.resolve(__dirname, '..', 'index.html');
     }, { m, WEEKS });
     const ok = !errors.length && !r.problems.length && r.maxStep < 50;
     if (!ok) failed = true;
-    console.log(`${ok ? 'ok  ' : 'FAIL'} ${r.map.padEnd(9)} week ${r.week}, ${r.trips} trips, ` +
+    console.log(`${ok ? 'ok  ' : 'FAIL'} ${r.map.padEnd(9)} day ${r.week}, ${r.trips} trips, ` +
       `step ${r.maxStep.toFixed(1)}ms, frame ${r.renderMs.toFixed(1)}ms` +
       (r.problems.length ? `, problems: ${r.problems.join('; ')}` : '') + (errors.length ? `, errors: ${errors.join('; ')}` : ''));
     await page.close();

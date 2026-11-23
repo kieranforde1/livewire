@@ -172,11 +172,11 @@
     <b id="score">0</b><small id="scoreSub">MW</small>
     <span class="sep"></span>
     <button class="cut" id="cutPill" aria-label="Generators cut off">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11.5 12 5l8 6.5V20H4z"/><path d="M3 21 21 3"/></svg>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="4.5" y="4.5" width="15" height="15" rx="3.5"/><path d="m13 7.5-3.5 5h3l-1.5 4"/><path d="M3 21 21 3"/></svg>
       <span id="cCut">0</span>
     </button>
   </div>
-  <div class="pill week"><span id="weekLabel">Week 1</span><div class="prog"><i id="weekBar"></i></div></div>
+  <div class="pill week"><span id="weekLabel">Day 1</span><div class="prog"><i id="weekBar"></i></div></div>
   <div class="pill ctrls">
     <button class="icon-btn" id="btnPause" aria-label="Pause"></button>
     <button class="icon-btn" id="btnSpeed" aria-label="Speed">1×</button>
@@ -274,14 +274,14 @@
   <div class="card">
     <h2>How to play</h2>
     <ul class="steps">
-      <li><span class="n">1</span><span>Drag from a generator to a town of the same colour to lay a cable. Pulses of power then travel along it.</span></li>
-      <li><span class="n">2</span><span>Towns show white dots when they want power. If too many wait with no pulse coming, the town starts to pulse and a timer fills. When it&rsquo;s full, the game ends.</span></li>
-      <li><span class="n">3</span><span>Cable tiles run out. Each week you get more and pick one of three upgrades. New tools appear in the toolbar.</span></li>
-      <li><span class="n">4</span><span>Cables glow amber to red when overloaded. Too long and the breaker trips: tap the gap to reset it. A transformer protects a cable.</span></li>
-      <li><span class="n">5</span><span>Solar only runs in daylight and wind comes and goes. Dimmed generators are offline, so give each town a steady source too. Batteries keep solar and wind running.</span></li>
-      <li><span class="n">6</span><span>A day lasts a week: demand dips at night and peaks in the evening.</span></li>
-      <li><span class="n">7</span><span>Tap a town to see what feeds it. The crossed-out generator at the top counts generators with no cable. Undo is bottom left. Pinch to zoom.</span></li>
-      <li><span class="n">8</span><span>Reach a map&rsquo;s MW target to unlock the next one.</span></li>
+      <li><span class="n">1</span><span>Drag from a generator to a town of the same colour. Power travels along the cable in small pulses.</span></li>
+      <li><span class="n">2</span><span>White dots on a town mean it&rsquo;s waiting for power. If too many wait, the town flashes and a timer starts. If the timer runs out, the game ends.</span></li>
+      <li><span class="n">3</span><span>Cable is limited. At the end of each day you get more and pick an upgrade.</span></li>
+      <li><span class="n">4</span><span>Overloaded cables turn amber, then red. If one stays overloaded, its breaker trips. Tap the gap to reset it. Transformers stop cables tripping.</span></li>
+      <li><span class="n">5</span><span>Coal always works. Solar only works in daylight. Wind comes and goes. Dim generators send nothing. Batteries keep solar and wind running.</span></li>
+      <li><span class="n">6</span><span>Demand is lowest at night and highest in the evening.</span></li>
+      <li><span class="n">7</span><span>Tap a town to see what feeds it. The number at the top left counts generators with no cable. Undo is at the bottom left. Pinch to zoom.</span></li>
+      <li><span class="n">8</span><span>Reach a map&rsquo;s target to unlock the next one.</span></li>
     </ul>
     <button class="btn" id="btnHelpDone">Got it</button>
   </div>
@@ -290,8 +290,8 @@
 <!-- Upgrade -->
 <div class="screen" id="sUpgrade">
   <div class="card">
-    <h2 id="upTitle">Week 2</h2>
-    <p id="upText">You've got 15 more cable tiles. Pick one upgrade.</p>
+    <h2 id="upTitle">Day 2</h2>
+    <p id="upText">A new day. You get 15 more cable tiles. Pick one upgrade.</p>
     <div class="choices" id="choices"></div>
   </div>
 </div>
