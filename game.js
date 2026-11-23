@@ -2930,7 +2930,7 @@
   const TIPS = [
     {
       id: 'road', pause: true,
-      text: 'Drag a cable from a generator to the round bolt next to the town. The game waits until you do.',
+      text: 'Drag a cable from a generator to the round bolt next to the town.',
       ready: () => G.time > 0.8,
       until: () => G.houses.some((h) => !h.cut),
       hl: () => {
