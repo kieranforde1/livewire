@@ -107,7 +107,7 @@
       const g = G();
       if (g.time - lastTick < 1) return;
       lastTick = g.time;
-      for (const t of g.trips.slice()) if (TRIP_LEFT(t) > o.resetAfter) w.restoreTrip(t);
+      for (const t of g.trips.slice()) if (TRIP_LEFT(t) > o.resetAfter) w.resetTrip(t);
       const nodes = gridNodes();
       for (const t of g.towns) if (g.adj[t.i].size === 0 && nodes.size) { if (wire(t.i, nodes)) return; }
       for (const type of ['coal', 'wind', 'solar', 'battery'].filter((x) => !(o.skip || []).includes(x))) {
@@ -150,7 +150,7 @@
     try {
       localStorage.setItem('livewire-tutorial-v2', '1');
       localStorage.setItem('livewire-seen-help-v2', '1');
-      localStorage.setItem('livewire-mech-v2', JSON.stringify({ solar: 1, wind: 1, battery: 1, trip: 1, evening: 1, link: 1, guard: 1 }));
+      localStorage.setItem('livewire-mech-v2', JSON.stringify({ solar: 1, wind: 1, battery: 1, trip: 1, evening: 1, link: 1, guard: 1, burn: 1, loss: 1 }));
     } catch (e) { /* storage unavailable */ }
     w.startNew(w.MAPS[m]);
     document.querySelectorAll('.screen').forEach((s) => s.classList.remove('show'));
@@ -183,7 +183,7 @@
     return {
       map: g.map.name, over: g.over, day: g.day, score: Math.floor(g.score), target: g.map.target, targetDay,
       towns: g.towns.length, gens: g.gens.reduce((c, x) => { c[x.type] = (c[x.type] || 0) + 1; return c; }, {}),
-      trips: g.trips_total, longestCascade: maxCascade, shortSecs: Math.round(shortSecs), minRatio: +minRatio.toFixed(2),
+      trips: g.trips_total, burnt: g.burnt_total, longestCascade: maxCascade, shortSecs: Math.round(shortSecs), minRatio: +minRatio.toFixed(2),
       cableLeft: g.res.cable, edges: g.edges.size, strands: [...g.edges.values()].reduce((s, e) => s + (e.kind === 'link' ? 0 : e.lvl), 0),
       log: opts && opts.log ? log : undefined,
     };

@@ -29,7 +29,14 @@
   const LINK_CAP = 20;
   const HEAT_RATE = 0.57;       // at 150% load a cable trips in about 3.5 s, at 110% in about 17 s
   const COOL_RATE = 0.25;
-  const TRIP_RESET = 15;        // seconds before a tripped cable comes back by itself
+  const TRIP_RESET = 15;        // seconds before a tripped cable comes back by itself, after its lockout
+  const LOCK_BASE = 4;          // seconds a tripped breaker can't be reset by hand
+  const LOCK_STEP = 5;          // and this much longer each time the same cable trips again
+  const TRIP_MEMORY = 40;       // a cable that hasn't tripped for this long starts its count again
+  const BURN_LOAD = 1.75;       // tripping at this load or more burns the cable out
+  const BURN_TRIPS = 3;         // and so does a third trip in a row
+  const LOSS_RATE = 0.03;       // share of its power a full cable loses as heat, per tile
+  const LINK_LOSS = 0.01;
   const CASCADE_GAP = 0.7;      // seconds between one trip and the next, so a cascade can be followed
   const DARK_FILL = 1 / 25;     // a town with no power at all goes dark in 25 s
   const DARK_DRAIN = 1 / 20;
@@ -37,7 +44,7 @@
   const SOLVE_EVERY = 0.2;
   const COAL_CLEAR = 2;         // coal plants stay more than this many tiles from a town
   const START_CABLE = 30;
-  const DAILY_CABLE = 20;
+  const DAILY_CABLE = 24;
   const GEN = {
     coal: { max: 8, name: 'coal plant', plural: 'coal plants' },
     solar: { max: 7, name: 'solar farm', plural: 'solar farms' },
@@ -181,7 +188,9 @@
       bounds: { x0: 0, y0: 0, x1: W - 1, y1: H - 1 },
       nextTown: 22,
       solveT: 0, tripCD: 0, gver: 0, fver: -1, uver: 0,
-      chain: 0, chainT: -99, trips_total: 0, longestChain: 0,
+      chain: 0, chainT: -99, trips_total: 0, burnt_total: 0, longestChain: 0,
+      scorch: [],      // burned-out cables, drawn as scorch marks for a while
+      losses: 0,
       wind: 0.6, windTarget: 0.6, windT: 15,
       supply: 0, demand: 0, delivered: 0,
       saveT: 0,
@@ -479,7 +488,12 @@
       return 'ok';
     }
     const trip = G.trips.find((t) => ekey(t.e.a, t.e.b) === k);
-    if (trip) { st.touched.add(trip.e); restoreTrip(trip, true); return 'ok'; }
+    if (trip) {
+      if (trip.lock > 0) { st.lockedTrip = trip; return 'locked'; }
+      st.touched.add(trip.e);
+      restoreTrip(trip);
+      return 'ok';
+    }
     if (crosses(a, b)) return 'cross';
     const ra = rough(a), rb = rough(b);
     let kind = 'land', run = 0;
@@ -608,22 +622,44 @@
     for (const t of G.towns) if (comp[t.i] >= 0) { comps[comp[t.i]].towns.push(t); t.grid = comp[t.i]; }
     for (const g of G.gens) if (comp[g.i] >= 0) comps[comp[g.i]].gens.push(g);
     const P = new Float64Array(N);
-    let supply = 0, demand = 0;
+    let supply = 0, demand = 0, losses = 0;
     for (const t of G.towns) demand += t.need;
     for (const c of comps) {
+      c.loss = 0;
       dispatch(c, P);
-      supply += c.supply;
       solveComp(c, P);
+      // Busy cables lose some of their power as heat, so the grid has to make
+      // extra to cover it. Work out the loss, then share the power out again.
+      let L = 0;
+      for (const v of c.nodes) for (const e of G.adj[v].values()) if (v === e.a) L += edgeLoss(e);
+      c.loss = Math.min(L, 0.6 * c.demand);
+      if (c.loss > 0.01) {
+        for (const v of c.nodes) P[v] = 0;
+        dispatch(c, P);
+        solveComp(c, P);
+      }
+      supply += c.supply;
+      losses += c.loss;
     }
-    for (const e of G.edges.values()) e.load = Math.abs(e.flow) / capOf(e);
+    for (const e of G.edges.values()) { e.load = Math.abs(e.flow) / capOf(e); e.loss = edgeLoss(e); }
     G.comps = comps;
     G.supply = supply;
     G.demand = demand;
+    G.losses = losses;
+  }
+
+  // Heat loss grows with how full a cable is and how long it is, so a busy
+  // line wastes far more than a quiet one, and extra strands cut the waste.
+  function edgeLoss(e) {
+    const f = Math.abs(e.flow);
+    const load = f / capOf(e);
+    return f * load * e.len * (e.kind === 'link' ? LINK_LOSS : LOSS_RATE);
   }
 
   function dispatch(c, P) {
-    let D = 0;
-    for (const t of c.towns) D += t.need;
+    let towns = 0;
+    for (const t of c.towns) towns += t.need;
+    const D = towns + c.loss;
     let R = 0, C = 0, chargeRoom = 0, dischargeRoom = 0;
     for (const g of c.gens) {
       if (g.type === 'battery') {
@@ -658,10 +694,14 @@
       }
       P[g.i] += g.out;
     }
-    for (const t of c.towns) { t.served = served; t.draw = t.need * served; P[t.i] -= t.draw; }
+    for (const t of c.towns) {
+      t.served = served;
+      t.draw = t.need * served;
+      P[t.i] -= (t.need + (towns > 0 ? (c.loss * t.need) / towns : 0)) * served;
+    }
     c.supply = A + dischargeRoom;
     c.avail = A;
-    c.demand = D;
+    c.demand = towns;
     c.served = served;
   }
 
@@ -731,24 +771,59 @@
     if (worst && G.tripCD <= 0) tripEdge(worst);
   }
 
+  // A breaker that trips is locked for a few seconds, longer each time the same
+  // cable trips again. A cable that trips while badly overloaded, or trips a
+  // third time in a row, burns out: it's gone, strands and all.
   function tripEdge(e) {
+    const loadNow = e.load;
+    e.trips = G.time - (e.lastTrip === undefined ? -999 : e.lastTrip) < TRIP_MEMORY ? (e.trips || 0) + 1 : 1;
+    e.lastTrip = G.time;
+    const burn = e.kind === 'land' && (loadNow >= BURN_LOAD || e.trips >= BURN_TRIPS);
     removeEdge(e);
     e.heat = 0; e.flow = 0; e.load = 0;
-    G.trips.push({ e, left: TRIP_RESET });
+    const mx = (tx(e.a) + tx(e.b)) / 2 + 0.5, my = (ty(e.a) + ty(e.b)) / 2 + 0.5;
+    if (burn) {
+      G.scorch.push({ a: e.a, b: e.b, left: 10 });
+      G.burnt_total++;
+      undoStack = [];
+      pendingSnap = null;
+      hudCache = '';
+      G.tripCD = CASCADE_GAP;
+      G.chain = G.time - G.chainT < 4 ? G.chain + 1 : 1;
+      G.chainT = G.time;
+      G.longestChain = Math.max(G.longestChain, G.chain);
+      G.fx.push({ type: 'spark', x: mx, y: my, t: 0 });
+      graphChanged();
+      solveFlow();
+      G.fver = G.gver;
+      sfx('cascade');
+      const why = loadNow >= BURN_LOAD ? `It was carrying ${Math.round(loadNow * 100)}% of what it’s rated for.` : 'It tripped three times in a row.';
+      if (!mechTip('burn', `A cable burned out. ${why} It’s gone, strands and all, so you’ll need to lay it again. More strands, or another route, stop this happening.`)) toast(`A cable burned out. ${why}`);
+      return;
+    }
+    const lock = LOCK_BASE + LOCK_STEP * (e.trips - 1);
+    G.trips.push({ e, left: TRIP_RESET + lock, lock, lockMax: lock });
     G.tripCD = CASCADE_GAP;
     G.trips_total++;
     G.chain = G.time - G.chainT < 4 ? G.chain + 1 : 1;
     G.chainT = G.time;
     G.longestChain = Math.max(G.longestChain, G.chain);
-    G.fx.push({ type: 'spark', x: (tx(e.a) + tx(e.b)) / 2 + 0.5, y: (ty(e.a) + ty(e.b)) / 2 + 0.5, t: 0 });
+    G.fx.push({ type: 'spark', x: mx, y: my, t: 0 });
     graphChanged();
     solveFlow();
     G.fver = G.gver;
     sfx(G.chain >= 2 ? 'cascade' : 'trip');
     if (G.chain === 3) toast('Cascade! Power keeps moving onto cables that can’t take it.');
-    else if (!mechTip('trip', 'A cable carried too much for too long and its breaker tripped. Its power moved straight onto the other cables, which can trip too. Tap the gap to reset it, or wait and it comes back by itself.')) {
-      if (G.chain < 2) toast('A cable tripped. Tap the gap to reset it.');
+    else if (!mechTip('trip', `A cable carried too much for too long and its breaker tripped. Its power moved straight onto the other cables, which can trip too. The breaker is locked for ${LOCK_BASE} seconds, then you can tap the gap to reset it. Each time the same cable trips, the lock lasts longer, and a third trip burns it out.`)) {
+      if (G.chain < 2) toast(e.trips > 1 ? `That cable tripped again. Locked for ${lock} seconds. One more trip and it burns out.` : 'A cable tripped. Tap the gap to reset it once the lock ends.');
     }
+  }
+
+  // A reset by hand only works once the lockout is over.
+  function resetTrip(t) {
+    if (t.lock > 0) return false;
+    restoreTrip(t);
+    return true;
   }
 
   function restoreTrip(t, quiet) {
@@ -789,8 +864,13 @@
     }
 
     updateHeat(dt);
-    for (const t of G.trips) t.left -= dt;
+    for (const t of G.trips) { t.left -= dt; t.lock = Math.max(0, (t.lock || 0) - dt); }
     for (const t of G.trips.filter((x) => x.left <= 0)) restoreTrip(t);
+    for (const sc of G.scorch) sc.left -= dt;
+    if (G.scorch.length) G.scorch = G.scorch.filter((sc) => sc.left > 0);
+    if (G.day >= 2 && G.losses > 0.12 * (G.delivered + G.losses) && G.losses > 1.5) {
+      mechTip('loss', 'Busy cables waste power as heat. The fuller and longer a cable is, the more it loses, and the grid has to make extra to cover it. Adding strands, or building closer to towns, cuts the waste. Tap the gauge to see how much is lost.');
+    }
 
     G.nextTown -= dt;
     if (G.nextTown <= 0) {
@@ -987,10 +1067,10 @@
       if (G.deco[i]) deco.push(i, G.deco[i]);
       if (G.guard[i]) guard.push(i);
     }
-    const tripLeft = new Map(G.trips.map((t) => [t.e, t.left]));
+    const tripOf = new Map(G.trips.map((t) => [t.e, t]));
     const data = {
       v: 4, map: G.map.id, W: G.W, H: G.H, water, mount, deco, guard, targetHit: G.targetHit,
-      edges: allEdges().map((e) => [e.a, e.b, e.kind, e.lvl, e.run, tripLeft.has(e) ? tripLeft.get(e) : -1]),
+      edges: allEdges().map((e) => { const t = tripOf.get(e); return [e.a, e.b, e.kind, e.lvl, e.run, t ? t.left : -1, t ? t.lock : 0, e.trips || 0]; }),
       runs: [...G.runs],
       towns: G.towns.map((t) => [t.i, t.bornDay, t.dark]),
       gens: G.gens.map((g) => [g.type, g.i, g.soc]),
@@ -1016,9 +1096,10 @@
     });
     Object.assign(G.res, data.res);
     G.owned = data.owned || {};
-    for (const [a, b, kind, lvl, run, left] of data.edges) {
+    for (const [a, b, kind, lvl, run, left, lock, trips] of data.edges) {
       const e = { a, b, kind, lvl, run, len: edgeLen(a, b), flow: 0, load: 0, heat: 0 };
-      if (left >= 0) G.trips.push({ e, left }); else linkEdge(e);
+      if (trips) { e.trips = trips; e.lastTrip = data.time; }
+      if (left >= 0) G.trips.push({ e, left, lock: lock || 0, lockMax: Math.max(1, lock || 0) }); else linkEdge(e);
     }
     G.runs = new Map(data.runs);
     for (const [i, bornDay, dark] of data.towns) {
@@ -1045,10 +1126,9 @@
   let undoStack = [];
   let pendingSnap = null;
   function snapNet() {
-    const tripLeft = new Map(G.trips.map((t) => [t.e, t.left]));
     return {
       uver: G.uver,
-      edges: allEdges().map((e) => [e, e.lvl, tripLeft.has(e) ? tripLeft.get(e) : -1]),
+      edges: allEdges().map((e) => [e, e.lvl]),
       runs: [...G.runs], res: { ...G.res }, gens: G.gens.slice(), guard: G.guard.slice(),
     };
   }
@@ -1064,11 +1144,13 @@
     commitUndo();
     const s = undoStack.pop();
     if (!s) return;
+    // Undo puts cables back but never resets a breaker: anything tripped now stays tripped.
+    const tripped = new Map(G.trips.map((t) => [t.e, t]));
     for (const e of [...G.edges.values()]) removeEdge(e);
     G.trips = [];
-    for (const [e, lvl, left] of s.edges) {
-      e.lvl = lvl; e.heat = 0;
-      if (left >= 0) G.trips.push({ e, left }); else linkEdge(e);
+    for (const [e, lvl] of s.edges) {
+      e.lvl = lvl;
+      if (tripped.has(e)) G.trips.push(tripped.get(e)); else { e.heat = 0; linkEdge(e); }
     }
     G.runs = new Map(s.runs);
     Object.assign(G.res, s.res);
@@ -1146,8 +1228,9 @@
     return idx(fx + sxv, fy + syv);
   }
 
-  function feedback(res) {
+  function feedback(res, trip) {
     const msg = {
+      locked: trip ? `That breaker is locked for ${Math.ceil(trip.lock)} more ${Math.ceil(trip.lock) === 1 ? 'second' : 'seconds'}.` : 'That breaker is still locked.',
       cable: 'Out of cable. Erase some, or wait for the next day.',
       sea: 'You need a sea cable to cross water.',
       under: G.map.hills ? 'You need an underground cable to go through a hill.' : 'Hills block cables.',
@@ -1189,7 +1272,7 @@
       const r = tryConnect(cur, nx, a.st);
       if (r === 'max') { if (!a.st.warned) { feedback(r); a.st.warned = true; } cur = nx; continue; }
       if (r !== 'ok') {
-        if (!a.st.warned && r !== 'bad') { feedback(r); a.st.warned = true; }
+        if (!a.st.warned && r !== 'bad') { feedback(r, a.st.lockedTrip); a.st.warned = true; }
         if ((r === 'bad' || r === 'cross') && canStart(nx) && !(a.st.run && a.st.run.open)) { cur = nx; continue; }
         break;
       }
@@ -1222,8 +1305,8 @@
     const trip = tappedTrip(c, wx, wy);
     if (trip && (a.tool === 'cable' || a.tool === 'erase')) {
       if (a.tool === 'erase') { eraseEdge(trip.e); G.uver++; graphChanged(); return; }
-      restoreTrip(trip);
-      toast('Breaker reset.');
+      if (resetTrip(trip)) toast(trip.e.trips > 1 ? `Breaker reset. It has tripped ${trip.e.trips} times; one more and it burns out.` : 'Breaker reset.');
+      else feedback('locked', trip);
       return;
     }
     if (c < 0) return;
@@ -1289,7 +1372,8 @@
     if (e.kind === 'link') return `Interconnector: carrying ${mw(Math.abs(e.flow))} of ${LINK_CAP} MW.`;
     const strands = `${e.lvl} ${e.lvl === 1 ? 'strand' : 'strands'}`;
     const more = e.lvl < MAX_STRANDS ? ' Draw along it again to add a strand.' : '';
-    return `Carrying ${mw(Math.abs(e.flow))} of ${capOf(e)} MW on ${strands}.${more}`;
+    const loss = e.loss > 0.05 ? `, losing ${mw(e.loss)} MW as heat` : '';
+    return `Carrying ${mw(Math.abs(e.flow))} of ${capOf(e)} MW on ${strands}${loss}.${more}`;
   }
 
   function resetTouches() {
@@ -1528,9 +1612,10 @@
 
     drawNight();
     drawCables();
-    drawTrips();
+    drawScorch();
     for (const g of G.gens) drawGen(g);
     for (const t of G.towns) drawTown(t);
+    drawTrips();
 
     // effects
     for (const f of G.fx) {
@@ -1721,6 +1806,24 @@
     ctx.fill(); ctx.stroke();
   }
 
+  function drawScorch() {
+    const s = cam.s;
+    for (const sc of G.scorch) {
+      const k = Math.min(1, sc.left / 3);
+      const x1 = sx(tx(sc.a) + 0.5), y1 = sy(ty(sc.a) + 0.5), x2 = sx(tx(sc.b) + 0.5), y2 = sy(ty(sc.b) + 0.5);
+      ctx.save();
+      ctx.lineCap = 'round';
+      ctx.strokeStyle = `rgba(0,0,0,${(0.55 * k).toFixed(3)})`;
+      ctx.lineWidth = s * 0.4;
+      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+      ctx.strokeStyle = `rgba(255,120,60,${(0.5 * k * (0.6 + 0.4 * Math.sin(G.time * 9 + sc.a))).toFixed(3)})`;
+      ctx.lineWidth = Math.max(1, s * 0.05);
+      ctx.setLineDash([s * 0.05, s * 0.12]);
+      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+      ctx.restore();
+    }
+  }
+
   function drawTrips() {
     const s = cam.s;
     for (const t of G.trips) {
@@ -1737,12 +1840,22 @@
       if (t.e.kind === 'link') linkPath(t.e); else { ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); }
       ctx.stroke();
       ctx.setLineDash([]);
-      // the ring empties as the breaker counts down to resetting itself
-      ctx.strokeStyle = 'rgba(255,255,255,0.7)';
-      ctx.lineWidth = Math.max(1.5, s * 0.05);
-      ctx.beginPath(); ctx.arc(mx, my, s * 0.36, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * (t.left / TRIP_RESET)); ctx.stroke();
-      ctx.fillStyle = `rgba(255,106,77,${(0.8 + 0.2 * pulse).toFixed(3)})`;
-      ctx.beginPath(); ctx.arc(mx, my, s * (0.28 + 0.04 * pulse), 0, Math.PI * 2); ctx.fill();
+      // While locked, a red ring empties and the bolt is grey. After that, a white
+      // ring counts down to the breaker resetting itself, and a tap resets it now.
+      const locked = t.lock > 0;
+      ctx.strokeStyle = locked ? PAL.hot : 'rgba(255,255,255,0.75)';
+      ctx.lineWidth = Math.max(2, s * 0.07);
+      const frac = locked ? t.lock / (t.lockMax || 1) : Math.min(1, t.left / TRIP_RESET);
+      ctx.beginPath(); ctx.arc(mx, my, s * 0.44, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * frac); ctx.stroke();
+      ctx.fillStyle = locked ? '#5a6275' : `rgba(255,106,77,${(0.8 + 0.2 * pulse).toFixed(3)})`;
+      ctx.beginPath(); ctx.arc(mx, my, s * (locked ? 0.34 : 0.34 + 0.04 * pulse), 0, Math.PI * 2); ctx.fill();
+      if (t.e.trips > 1) {
+        // one dot per repeat trip, so you can see a cable is close to burning out
+        ctx.fillStyle = PAL.hot;
+        for (let k = 0; k < t.e.trips - 1; k++) {
+          ctx.beginPath(); ctx.arc(mx + s * (0.5 + k * 0.16), my - s * 0.38, s * 0.06, 0, Math.PI * 2); ctx.fill();
+        }
+      }
       ctx.fillStyle = '#fff';
       const r = s * 0.19;
       ctx.beginPath();
@@ -2038,6 +2151,7 @@
     if (!G) return;
     const spare = G.supply - G.demand;
     toast(`Towns need ${mw(G.demand)} MW and are getting ${mw(G.delivered)} MW. ` +
+      (G.losses > 0.1 ? `${mw(G.losses)} MW is lost as heat in busy cables. ` : '') +
       (G.delivered < G.demand - 0.05
         ? (spare > 0 ? 'There is enough power, but not where it’s needed. Join your grids, or connect the dark towns.' : 'Build more power stations, or store power in batteries.')
         : `Spare: ${mw(Math.max(0, spare))} MW.`));
@@ -2739,7 +2853,7 @@
   window.__livewire = {
     get G() { return G; }, get tut() { return tut; }, get inspect() { return inspect; }, MAPS, GEN,
     step, render, solveFlow, tryConnect, endStroke, newStroke, placeGen, placeCheck, placeLink, placeGuard, eraseAt,
-    restoreTrip, startNew, save, load, undo, showUpgrade, openInspect, closeInspect, idx, tx, ty, cheb, rough, capOf,
+    restoreTrip, resetTrip, startNew, save, load, undo, showUpgrade, openInspect, closeInspect, idx, tx, ty, cheb, rough, capOf,
     getProgress, sx, sy, cam, user, dayPhase, sun,
   };
 })();
