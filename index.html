@@ -8,7 +8,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Livewire">
 <meta name="theme-color" content="#0b0f18">
-<meta name="description" content="Run cables so every town keeps its lights on. Works offline.">
+<meta name="description" content="Build a power grid and keep every town's lights on. Works offline.">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="icon" type="image/png" href="icons/icon-192.png">
@@ -61,6 +61,30 @@
     border-radius: 999px; font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; }
   .cut svg { width: 19px; height: 19px; }
   .cut.alert { color: #ff8a6b; }
+  .gauge { flex-direction: column; gap: 3px; align-items: stretch; border: 0; color: var(--paper); padding: 5px 12px; font-family: inherit; }
+  .gtext { display: flex; align-items: baseline; justify-content: center; gap: 3px; white-space: nowrap; }
+  .gtext b { font-size: 15px; font-variant-numeric: tabular-nums; }
+  .gtext small { font-size: 11.5px; color: #b9b2a3; font-variant-numeric: tabular-nums; }
+  .gbar { position: relative; width: 64px; height: 5px; border-radius: 3px; background: #4a4d56; overflow: hidden; }
+  .gbar i { display: block; height: 100%; width: 0; background: #2fe0c0; border-radius: 3px; transition: background .3s; }
+  .gbar em { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: #e6eefc; opacity: .7; }
+  .gauge.short .gbar i { background: #ffc83d; }
+  .gauge.dark .gbar i { background: #ff6a4d; }
+  .gauge.dark b { color: #ff8a6b; }
+  @media (max-width: 440px) {
+    .tod, .unit { display: none; }
+    .week .prog { width: 44px; }
+  }
+  @media (max-width: 400px) {
+    #top { gap: 4px; padding-left: calc(env(safe-area-inset-left) + 6px); padding-right: calc(env(safe-area-inset-right) + 6px); }
+    .ctrls .icon-btn { width: 29px; }
+    #top .pill { padding-left: 8px; padding-right: 8px; }
+    #top .ctrls { padding: 3px; }
+    .score b { font-size: 16px; }
+    .score small { font-size: 11px; }
+    .week span { font-size: 12px; }
+    .gbar { width: 52px; }
+  }
   .week { flex-direction: column; gap: 4px; align-items: stretch; padding: 6px 12px; }
   .week span { font-size: 13px; font-weight: 600; text-align: center; white-space: nowrap; }
   .prog { width: 58px; height: 4px; border-radius: 2px; background: #4a4d56; overflow: hidden; }
@@ -169,13 +193,12 @@
 
 <div id="top" class="bar" hidden>
   <div class="pill score">
-    <b id="score">0</b><small id="scoreSub">MW</small>
-    <span class="sep"></span>
-    <button class="cut" id="cutPill" aria-label="Generators cut off">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="4.5" y="4.5" width="15" height="15" rx="3.5"/><path d="m13 7.5-3.5 5h3l-1.5 4"/><path d="M3 21 21 3"/></svg>
-      <span id="cCut">0</span>
-    </button>
+    <b id="score">0</b><small id="scoreSub">MWh</small>
   </div>
+  <button class="pill gauge" id="gauge" aria-label="Power reaching towns">
+    <span class="gtext"><b id="gDel">0</b><small id="gDem">/ 0 MW</small></span>
+    <span class="gbar"><i id="gFill"></i><em id="gSpare"></em></span>
+  </button>
   <div class="pill week"><span id="weekLabel">Day 1</span><div class="prog"><i id="weekBar"></i></div></div>
   <div class="pill ctrls">
     <button class="icon-btn" id="btnPause" aria-label="Pause"></button>
@@ -194,8 +217,8 @@
 
 <div id="bottom" class="bar" hidden>
   <div class="toolbar">
-    <button class="tool active" data-tool="road" aria-label="Cable">
-      <span class="count" id="cRoads">0</span>
+    <button class="tool active" data-tool="cable" aria-label="Cable">
+      <span class="count" id="cCable">0</span>
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 20c0-6 3-8 7-8s7-2 7-8"/><circle cx="5" cy="20" r="1.4" fill="currentColor"/><circle cx="19" cy="4" r="1.4" fill="currentColor"/></svg>
       Cable
     </button>
@@ -203,46 +226,45 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 20h12"/><path d="M5.5 15.5 14 7a2 2 0 0 1 2.8 0l2.2 2.2a2 2 0 0 1 0 2.8L12 19H8.5l-3-3a.7.7 0 0 1 0-.5z"/><path d="m10 11 5 5"/></svg>
       Erase
     </button>
-    <button class="tool" data-info="bridge" id="bridgeTool" aria-label="Sea cables">
-      <span class="count" id="cBridges">0</span>
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 10h20"/><path d="M4 10c2.5 4 13.5 4 16 0"/><path d="M7 10v9M17 10v9"/><path d="M2 20h3M10 20h4M19 20h3" stroke-width="1.6"/></svg>
-      Sea cable
-    </button>
-    <button class="tool" data-info="tunnel" id="tunnelTool" aria-label="Underground cables" hidden>
-      <span class="count" id="cTunnels">0</span>
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 20 9 6l4 5.5L16 8l6 12z"/><path d="M9 20v-2.5a3 3 0 0 1 6 0V20"/></svg>
-      Underground
-    </button>
-    <!-- Upgrade tools: shown once you have picked one up this game -->
-    <button class="tool" data-tool="round" data-res="rounds" aria-label="Transformer" hidden>
-      <span class="count" id="cRounds">0</span>
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="9.5" cy="12" r="5"/><circle cx="14.5" cy="12" r="5"/><path d="M2 12h2.5M19.5 12H22"/></svg>
-      Transformer
-    </button>
-    <button class="tool" data-tool="motor" data-res="motors" aria-label="Express line" hidden>
-      <span class="count" id="cMotors">0</span>
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12a4 4 0 0 1 8 0"/><path d="M14 12a4 4 0 0 1 8 0"/><path d="M6 16h12" stroke-dasharray="2 2.6"/></svg>
-      Express
-    </button>
-    <button class="tool" data-tool="entrance" data-res="entrances" aria-label="Extra substation" hidden>
+    <button class="tool" data-tool="coal" data-res="coal" aria-label="Coal plant" hidden>
       <span class="count">0</span>
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"><rect x="7" y="4" width="10" height="10" rx="2"/><rect x="2.5" y="16" width="5" height="5" rx="1" fill="currentColor"/><rect x="16.5" y="16" width="5" height="5" rx="1" fill="currentColor"/></svg>
-      Substation
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 20V11l5 3v-3l5 3V5h4v15z"/><path d="M3 20h18"/></svg>
+      Coal
     </button>
-    <button class="tool" data-tool="dozer" data-res="dozers" aria-label="Excavator" hidden>
+    <button class="tool" data-tool="solar" data-res="solar" aria-label="Solar farm" hidden>
       <span class="count">0</span>
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="9" width="12" height="7" rx="1.5"/><path d="M4 7v11"/><path d="M4 12h4"/><circle cx="11" cy="19" r="1.6"/><circle cx="17" cy="19" r="1.6"/></svg>
-      Excavator
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 18 6 9h12l2 9z"/><path d="M5 13.5h14M12 9v9"/><path d="M12 3v2M7 4.5l1 1.5M17 4.5 16 6"/></svg>
+      Solar
     </button>
-    <button class="tool" data-tool="battery" data-res="batteries" aria-label="Battery" hidden>
+    <button class="tool" data-tool="wind" data-res="wind" aria-label="Wind farm" hidden>
+      <span class="count">0</span>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 11v10"/><path d="M12 11 12 3M12 11l7 4M12 11l-7 4"/><circle cx="12" cy="11" r="1.4" fill="currentColor"/></svg>
+      Wind
+    </button>
+    <button class="tool" data-tool="battery" data-res="battery" aria-label="Battery" hidden>
       <span class="count">0</span>
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="7" width="16" height="10" rx="2.5"/><path d="M21 10.5v3"/><path d="M11.5 8.5 8.5 12h3l-1 3.5"/></svg>
       Battery
     </button>
-    <button class="tool" data-tool="move" data-res="moves" aria-label="Move a generator" hidden>
+    <button class="tool" data-tool="link" data-res="link" aria-label="Interconnector" hidden>
       <span class="count">0</span>
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="13" width="8" height="8" rx="2" opacity=".45"/><rect x="12" y="3" width="9" height="9" rx="2"/><path d="m16.8 5-2.2 3h1.8l-.8 2.5 2.6-3.4h-1.9z" fill="currentColor"/><path d="M7 11c1-3 3-4 5-4"/></svg>
-      Move
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 18Q12 2 20 18"/><circle cx="4" cy="18" r="1.8" fill="currentColor"/><circle cx="20" cy="18" r="1.8" fill="currentColor"/></svg>
+      Link
+    </button>
+    <button class="tool" data-tool="guard" data-res="guard" aria-label="Surge guard" hidden>
+      <span class="count">0</span>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 19 6v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z"/><path d="m13 8-2.5 4h3L12 16"/></svg>
+      Guard
+    </button>
+    <button class="tool" data-info="sea" id="seaTool" aria-label="Sea cables">
+      <span class="count" id="cSea">0</span>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 16c2-1.5 4-1.5 6 0s4 1.5 6 0 4-1.5 6 0"/><path d="M3 10h18"/><circle cx="3" cy="10" r="1.4" fill="currentColor"/><circle cx="21" cy="10" r="1.4" fill="currentColor"/></svg>
+      Sea cable
+    </button>
+    <button class="tool" data-info="under" id="underTool" aria-label="Underground cables" hidden>
+      <span class="count" id="cUnder">0</span>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 20 9 6l4 5.5L16 8l6 12z"/><path d="M5 16h14" stroke-dasharray="2 2"/></svg>
+      Underground
     </button>
   </div>
 </div>
@@ -274,16 +296,14 @@
   <div class="card">
     <h2>How to play</h2>
     <ul class="steps">
-      <li><span class="n">1</span><span>Drag from a generator to a town of the same colour to lay a cable.</span></li>
-      <li><span class="n">2</span><span>Each generator holds two pulses, the white dots on it. A pulse carries power to a town, then goes back empty to recharge. More generators on a town means it gets power faster, and nearer ones are quicker.</span></li>
-      <li><span class="n">3</span><span>Generators can share cables. Shared cables save tiles but get busy. A busy town may need its own line.</span></li>
-      <li><span class="n">4</span><span>White dots on a town mean it&rsquo;s waiting for power. If too many wait, the town flashes and a timer starts. If the timer runs out, the game ends.</span></li>
-      <li><span class="n">5</span><span>Cable is limited. At the end of each day you get more and pick an upgrade.</span></li>
-      <li><span class="n">6</span><span>Overloaded cables turn amber, then red. If one stays overloaded, its breaker trips. Tap the gap to reset it. Transformers stop cables tripping.</span></li>
-      <li><span class="n">7</span><span>Coal works day and night. Solar only works in daylight. Wind comes and goes. Dim generators send nothing. A battery keeps a solar or wind generator running.</span></li>
-      <li><span class="n">8</span><span>Demand is lowest at night and highest in the evening.</span></li>
-      <li><span class="n">9</span><span>Tap a town to see what feeds it. The number at the top left counts generators with no cable. Undo is at the bottom left. Pinch to zoom.</span></li>
-      <li><span class="n">10</span><span>Reach a map&rsquo;s target to unlock the next one.</span></li>
+      <li><span class="n">1</span><span>Pick a power station in the toolbar, then tap open land to build it. Coal plants can&rsquo;t go within 2 tiles of a town.</span></li>
+      <li><span class="n">2</span><span>Drag cables to join power stations to towns. Power spreads through every cable it can reach, all at once.</span></li>
+      <li><span class="n">3</span><span>One strand of cable carries 5 MW. Draw along a cable again to add a strand, up to 3.</span></li>
+      <li><span class="n">4</span><span>Cables turn amber, then red, when they carry too much. If one stays red, its breaker trips and its power moves onto other cables, which can trip too. Tap the gap to reset it.</span></li>
+      <li><span class="n">5</span><span>The gauge at the top shows power reaching towns against what they need. When a grid is short, every town on it dims and a timer starts. If a town goes fully dark, the game ends.</span></li>
+      <li><span class="n">6</span><span>Coal runs day and night. Solar runs in daylight. Wind comes and goes, and does better next to water. Batteries store spare power and give it back when the grid is short.</span></li>
+      <li><span class="n">7</span><span>Towns need the least power at night and the most in the evening, just after sunset.</span></li>
+      <li><span class="n">8</span><span>Each day brings more cable, new power stations and an upgrade. Tap a town, a power station or a cable to see how it&rsquo;s doing. Undo is at the bottom left. Pinch to zoom.</span></li>
     </ul>
     <button class="btn" id="btnHelpDone">Got it</button>
   </div>
@@ -307,8 +327,6 @@
     <button class="btn secondary" id="btnRestart">Restart this map</button>
     <button class="btn secondary" id="btnMenuMaps">Choose a map</button>
     <button class="btn secondary" id="btnSound">Sound: on</button>
-    <button class="btn secondary" id="btnShapes" aria-describedby="shapesNote">Colour shapes: off</button>
-    <p class="small" id="shapesNote">Adds a shape to each colour, so generators and towns are easier to match if colours are hard to tell apart.</p>
     <div class="offline" id="offline2"><i></i><span></span></div>
   </div>
 </div>
