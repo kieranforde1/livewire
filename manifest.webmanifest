@@ -1,7 +1,7 @@
 {
   "name": "Livewire",
   "short_name": "Livewire",
-  "description": "Run cables so every town keeps its lights on.",
+  "description": "Build a power grid and keep every town's lights on.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

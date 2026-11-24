@@ -4,14 +4,6 @@
   const CACHE_PREFIX = 'livewire-';
   const OFFLINE_ASSETS = 7;
 
-  const COLORS = [
-    { fill: '#ff6a4d', dark: '#a8321c', name: 'red' },
-    { fill: '#2fe0c0', dark: '#128670', name: 'teal' },
-    { fill: '#ffc83d', dark: '#a67a0c', name: 'yellow' },
-    { fill: '#a98bff', dark: '#5b3fb0', name: 'purple' },
-    { fill: '#4aa8ff', dark: '#1f61a8', name: 'blue' },
-    { fill: '#ff5fa8', dark: '#a82a6a', name: 'pink' },
-  ];
   const PAL = {
     bg: '#0b0f18',
     land: '#151c2b',
@@ -19,73 +11,80 @@
     grid: 'rgba(120,170,255,0.06)',
     water: '#0c2d4d',
     waterEdge: '#12426b',
-    road: '#7b8db0',
-    roadEdge: '#56658a',
-    bridge: '#8aa0cc',
-    motor: '#2a3550',
-    motorLine: '#ffd45e',
     tree: '#1b2438',
     mount: '#26314a',
     mountDark: '#1d2740',
     mountLight: '#33405f',
+    link: '#ffd45e',
+    lit: '#ffd76a',
+    unlit: '#0d1220',
+    hot: '#ff5a3c',
   };
 
-  const CAR_SPEED = 1.6;        // tiles per second
-  const MOTOR_SPEED = 4.2;
-  const GAP = 0.55;             // spacing between queued cars
-  const CROSS = 0.7;            // seconds a 3-way junction is blocked per car
-  const CROSS_PER_ARM = 0.15;   // extra for each road beyond 3
-  const ROUND_CROSS = 0.18;     // same, for a roundabout
-  const GATE_CROSS = 0.45;      // cars take turns at a car park gate, in or out
-  const INTER_PENALTY = 0.45;   // routing cost of passing a plain junction
-  const DWELL = 0.8;
-  const PIN_LIMIT = 5;          // waiting visitors (no car on the way, or one stuck in traffic) before the timer starts
-  const OVER_FILL = 1 / 60;     // overflow timer fills in 60s
-  const OVER_DRAIN = 1 / 30;    // and empties at half that speed once things improve
-  const LATE = 3;               // seconds stuck in traffic before a car's visitor counts as waiting again
-  const WEEK_LEN = 70;
-  const CARS_PER_HOUSE = 2;
-  const MAX_SPAN = 6;           // longest bridge or tunnel, in tiles
-  const BUS_CAP = 4;            // visitors a shuttle bus carries per trip
-  const BUS_SPEED = 0.8;        // buses are a bit slower than cars
-  const BIG_PARK = 0.5;         // a bigger car park's gate works twice as fast
-  const SQRT2 = Math.SQRT2;
-  const SAVE_KEY = 'livewire-save-v1';
-  const BEST_KEY = 'livewire-best';
-  const PROGRESS_KEY = 'livewire-progress';
-  const SEEN_HELP_KEY = 'livewire-seen-help';
-  const SHAPES_KEY = 'livewire-shapes';
-  let shapesOn = false;
-  try { shapesOn = localStorage.getItem(SHAPES_KEY) === '1'; } catch (e) { /* storage unavailable */ }
+  const DAY_LEN = 70;           // seconds in one day
+  const MAX_SPAN = 6;           // longest sea or underground cable, in tiles
+  const LINK_RANGE = 8;         // longest interconnector, in tiles
+  const STRAND_CAP = 5;         // MW one strand of cable carries
+  const MAX_STRANDS = 3;
+  const LINK_CAP = 20;
+  const HEAT_RATE = 0.57;       // at 150% load a cable trips in about 3.5 s, at 110% in about 17 s
+  const COOL_RATE = 0.25;
+  const TRIP_RESET = 15;        // seconds before a tripped cable comes back by itself, after its lockout
+  const LOCK_BASE = 4;          // seconds a tripped breaker can't be reset by hand
+  const LOCK_STEP = 5;          // and this much longer each time the same cable trips again
+  const TRIP_MEMORY = 40;       // a cable that hasn't tripped for this long starts its count again
+  const BURN_LOAD = 1.75;       // tripping at this load or more burns the cable out
+  const BURN_TRIPS = 3;         // and so does a third trip in a row
+  const LOSS_RATE = 0.03;       // share of its power a full cable loses as heat, per tile
+  const LINK_LOSS = 0.01;
+  const CASCADE_GAP = 0.7;      // seconds between one trip and the next, so a cascade can be followed
+  const DARK_FILL = 1 / 25;     // a town with no power at all goes dark in 25 s
+  const DARK_DRAIN = 1 / 20;
+  const GRACE = 14;             // seconds a new town waits before its timer starts
+  const SOLVE_EVERY = 0.2;
+  const COAL_CLEAR = 2;         // coal plants stay more than this many tiles from a town
+  const START_CABLE = 30;
+  const DAILY_CABLE = 24;
+  const GEN = {
+    coal: { max: 8, name: 'coal plant', plural: 'coal plants' },
+    solar: { max: 7, name: 'solar farm', plural: 'solar farms' },
+    wind: { max: 8, name: 'wind farm', plural: 'wind farms' },
+    battery: { max: 5, name: 'battery', plural: 'batteries', store: 120 },
+  };
+  const GEN_TYPES = ['coal', 'solar', 'wind', 'battery'];
+  const SAVE_KEY = 'livewire-save-v4';
+  const PROGRESS_KEY = 'livewire-progress-v2';
+  const SEEN_HELP_KEY = 'livewire-seen-help-v2';
+  const TUT_KEY = 'livewire-tutorial-v2';
+  const MECH_KEY = 'livewire-mech-v2';
 
   // Maps are drawn in landscape (28 x 18) and turned on their side for portrait.
-  // Each has fixed terrain, so it feels like a place; houses and buildings
-  // appear in different spots every game.
+  // Each has fixed terrain, so it feels like a place; towns appear in different spots every game.
   const MAPS = [
     {
-      id: 'millbrook', name: 'Ampton', seed: 7193, target: 500, demand: 1, solar: 3, wind: 6, trip: 5, swing: 0.25,
+      id: 'ampton', name: 'Ampton', seed: 7193, target: 1500, demand: 1, swing: 0.3, solarDay: 3, windDay: 5,
       blurb: 'One river runs through town.',
-      rivers: [{ axis: 'v', pos: 0.42 }], lakes: 1, hills: 0, bridges: 1, tunnels: 0,
+      rivers: [{ axis: 'v', pos: 0.42 }], lakes: 1, hills: 0, sea: 1, under: 0,
     },
     {
-      id: 'twinford', name: 'Wattford', seed: 4410, target: 650, demand: 1.1, solar: 2, wind: 5, trip: 4, swing: 0.3,
+      id: 'wattford', name: 'Wattford', seed: 4410, target: 2000, demand: 1.1, swing: 0.33, solarDay: 2, windDay: 4,
       blurb: 'Two rivers cross in the middle. You only get a few sea cables.',
-      rivers: [{ axis: 'v', pos: 0.4 }, { axis: 'h', pos: 0.58 }], lakes: 0, hills: 0, bridges: 2, tunnels: 0,
+      rivers: [{ axis: 'v', pos: 0.4 }, { axis: 'h', pos: 0.58 }], lakes: 0, hills: 0, sea: 2, under: 0,
     },
     {
-      id: 'stonehill', name: 'Ohmstone', seed: 2231, target: 800, demand: 1, solar: 2, wind: 4, trip: 3, swing: 0.35,
+      id: 'ohmstone', name: 'Ohmstone', seed: 2231, target: 2200, demand: 1, swing: 0.36, solarDay: 2, windDay: 3,
       blurb: 'Hills get in the way. Go round them or under them.',
-      rivers: [{ axis: 'v', pos: 0.66 }], lakes: 0, hills: 6, bridges: 1, tunnels: 1,
+      rivers: [{ axis: 'v', pos: 0.66 }], lakes: 0, hills: 6, sea: 1, under: 1,
     },
     {
-      id: 'cragmoor', name: 'Faradale', seed: 9067, target: 950, demand: 1.15, solar: 2, wind: 3, trip: 3, swing: 0.4,
+      id: 'faradale', name: 'Faradale', seed: 9067, target: 2500, demand: 1.15, swing: 0.4, solarDay: 2, windDay: 3,
       blurb: 'Rivers, lakes and hills, and not much open ground.',
-      rivers: [{ axis: 'v', pos: 0.32 }, { axis: 'v', pos: 0.7 }], lakes: 2, hills: 7, bridges: 2, tunnels: 1,
+      rivers: [{ axis: 'v', pos: 0.32 }, { axis: 'v', pos: 0.7 }], lakes: 2, hills: 7, sea: 2, under: 1,
     },
     {
-      id: 'voltmere', name: 'Voltmere', seed: 5521, target: 1100, demand: 1.25, solar: 1, wind: 3, trip: 2, swing: 0.45,
-      blurb: 'A row of islands. Most cables have to cross water.',
-      rivers: [{ axis: 'h', pos: 0.5 }], lakes: 4, hills: 3, bridges: 3, tunnels: 1,
+      id: 'voltmere', name: 'Voltmere', seed: 5521, target: 2500, demand: 1.2, swing: 0.45, solarDay: 1, windDay: 2,
+      blurb: 'A row of islands. Wind farms by the water do well here.',
+      rivers: [{ axis: 'h', pos: 0.5 }], lakes: 4, hills: 3, sea: 3, under: 1,
     },
   ];
 
@@ -108,53 +107,32 @@
   const cam = { x: 0, y: 0, s: 30 };
   const user = { zoom: 1, px: 0, py: 0 };
   let camSnap = true;
-  let tool = 'road';
+  let tool = 'cable';
   let modal = null;
-  let motorStart = -1;
+  let linkStart = -1;
   let hoverTile = -1;
 
   const rnd = (a, b) => a + Math.random() * (b - a);
   const rint = (a, b) => Math.floor(rnd(a, b + 1));
   const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
   const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
-  const fmt = (n) => n.toLocaleString("en-GB");
+  const fmt = (n) => Math.floor(n).toLocaleString('en-GB');
+  const mw = (n) => (Math.round(n * 10) / 10).toLocaleString('en-GB');
 
   // ---------------------------------------------------------------- grid helpers
-  // Graph nodes are tile indexes. An overpass tile has a second node for its
-  // upper deck: tile + G.N. It carries the east-west road over the north-south one.
   const idx = (x, y) => y * G.W + x;
   const tx = (i) => i % G.W;
-  const ty = (i) => ((i % G.N) / G.W) | 0;
-  const deck = (i) => i + G.N;
-  const isDeck = (n) => n >= G.N;
-  const base = (n) => (n >= G.N ? n - G.N : n); // the tile under a node, deck or not
+  const ty = (i) => (i / G.W) | 0;
   const inMap = (x, y) => x >= 0 && y >= 0 && x < G.W && y < G.H;
   const inB = (x, y) => x >= G.bounds.x0 && x <= G.bounds.x1 && y >= G.bounds.y0 && y <= G.bounds.y1;
+  const inBi = (i) => inB(tx(i), ty(i));
   const ekey = (a, b) => (a < b ? a * 65536 + b : b * 65536 + a);
-  const dkey = (a, b) => a * 65536 + b;
+  const cheb = (a, b) => Math.max(Math.abs(tx(a) - tx(b)), Math.abs(ty(a) - ty(b)));
+  const DIR4 = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 
-  // water and hills can't be built on without a bridge or tunnel
+  // water and hills can't be built on without a sea or underground cable
   const rough = (i) => G.water[i] || G.mount[i];
-
-  function freeTile(i) {
-    return !rough(i) && !G.road[i] && !G.occ[i];
-  }
-
-  function kind(i) {
-    const o = G.occ[i];
-    if (o) return o.kind === 'dest' ? null : o.kind;
-    if (G.road[i]) return 'road';
-    if (G.water[i]) return 'water';
-    if (G.mount[i]) return 'mount';
-    return 'land';
-  }
-
-  function nodeValid(n) {
-    if (isDeck(n)) return !!G.overpass[n - G.N];
-    if (G.road[n]) return true;
-    const o = G.occ[n];
-    return !!o && (o.kind === 'house' || o.kind === 'port');
-  }
+  const terrainOf = (i) => (G.water[i] ? 'sea' : G.mount[i] ? 'under' : null);
 
   // ---------------------------------------------------------------- new game
   function newGame(map) {
@@ -165,8 +143,9 @@
     const H = portrait ? 28 : 18;
     G = blankState(W, H);
     G.map = map;
-    G.res.bridges = map.bridges;
-    G.res.tunnels = map.tunnels;
+    G.res.sea = map.sea;
+    G.res.under = map.under;
+    G.res.coal = 2;
     genTerrain(map, portrait);
     const bw = portrait ? 10 : 15;
     const bh = portrait ? 15 : 10;
@@ -174,17 +153,11 @@
     const y0 = Math.floor((H - bh) / 2);
     G.bounds = { x0, y0, x1: x0 + bw - 1, y1: y0 + bh - 1 };
     fitBoundsToScreen();
-
-    const d = spawnDest(0);
-    G.colorsUsed = 1;
-    if (d) {
-      for (let k = 0; k < 3; k++) spawnHouse(0, { x: d.x + 0.5, y: d.y + 0.5, rmin: 4, rmax: 7 });
-      d.pinT = 3;
-    }
+    spawnTown(true);
     user.zoom = 1; user.px = 0; user.py = 0;
     camSnap = true;
-    tool = 'road';
-    motorStart = -1;
+    tool = 'cable';
+    linkStart = -1;
     graphChanged();
   }
 
@@ -195,39 +168,31 @@
       map: MAPS[0],
       water: new Uint8Array(N),
       mount: new Uint8Array(N),
-      road: new Uint8Array(N),
-      round: new Uint8Array(N),
-      overpass: new Uint8Array(N),
       deco: new Uint8Array(N),
+      guard: new Uint8Array(N),
       occ: new Array(N).fill(null),
-      adj: Array.from({ length: N * 2 }, () => new Map()),
+      adj: Array.from({ length: N }, () => new Map()),
       edges: new Map(),
-      queues: new Map(),
-      lock: new Float64Array(N * 2),
-      houses: [],
-      dests: [],
-      cars: [],
+      runs: new Map(),   // sea and underground runs, so erasing one gives the token back
+      trips: [],         // cables whose breaker has tripped: { e, left }
+      theta: new Float64Array(N),
+      towns: [],
+      gens: [],
+      comps: [],
+      comp: new Int32Array(N).fill(-1),
       fx: [],
-      res: {
-        roads: 30, bridges: 1, tunnels: 0, rounds: 0, motors: 0,
-        entrances: 0, dozers: 0, moves: 0, batteries: 0,
-      },
-      owned: {}, // upgrade tools picked up this game, so they stay in the toolbar
-      bridgesUsed: 0,
-      tunnelsUsed: 0,
-      cutOff: 0,
-      targetHit: false,
-      time: 0, week: 1, weekT: 0, score: 0,
-      speed: 1, paused: false, over: false,
+      res: { cable: START_CABLE, sea: 0, under: 0, link: 0, guard: 0, coal: 0, solar: 0, wind: 0, battery: 0 },
+      owned: {},
+      time: 0, day: 1, dayT: 0, score: 0,
+      speed: 1, paused: false, over: false, targetHit: false,
       bounds: { x0: 0, y0: 0, x1: W - 1, y1: H - 1 },
-      colorsUsed: 0,
-      nextHouse: 4,
-      nextDest: 32,
-      noted: {},
-      trips: [],       // cables tripped by sustained overload, waiting to reset
-      rush: null,      // { color, left, mult } while a rush hour is on
-      nextRush: 150,
-      dispatchT: 0,
+      nextTown: 22,
+      solveT: 0, tripCD: 0, gver: 0, fver: -1, uver: 0,
+      chain: 0, chainT: -99, trips_total: 0, burnt_total: 0, longestChain: 0,
+      scorch: [],      // burned-out cables, drawn as scorch marks for a while
+      losses: 0,
+      wind: 0.6, windTarget: 0.6, windT: 15,
+      supply: 0, demand: 0, delivered: 0,
       saveT: 0,
       nextId: 1,
     };
@@ -300,223 +265,67 @@
     }
   }
 
-  // ---------------------------------------------------------------- spawning
-  function distToBlock(px, py, d) {
-    const cx = clamp(px, d.x, d.x + 1);
-    const cy = clamp(py, d.y, d.y + 1);
-    return Math.max(Math.abs(px - cx), Math.abs(py - cy));
-  }
-
-  // Splits the open land into areas you can build roads across without a new
-  // bridge or tunnel. An area is "settled" if it already touches your town.
-  function landAreas() {
-    const area = new Int32Array(G.N).fill(-1);
-    const settled = [];
-    const open = (i) => (!rough(i) || G.road[i]) && !G.occ[i];
-    let any = false;
-    for (let s = 0; s < G.N; s++) {
-      if (area[s] >= 0 || !inB(tx(s), ty(s)) || !open(s)) continue;
-      const id = settled.length;
-      let town = false;
-      const stack = [s];
-      area[s] = id;
-      while (stack.length) {
-        const u = stack.pop();
-        if (G.road[u]) town = true;
-        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-          const x = tx(u) + dx, y = ty(u) + dy;
-          if (!inB(x, y)) continue;
-          const v = idx(x, y);
-          if (G.occ[v]) { if (G.occ[v].kind !== 'dest' && G.adj[v].size) town = true; continue; }
-          if (area[v] < 0 && open(v)) { area[v] = id; stack.push(v); }
-        }
-      }
-      settled.push(town);
-      if (town) any = true;
-    }
-    // Before anything is built, everywhere counts.
-    return { area, ok: (i) => !any || (area[i] >= 0 && settled[area[i]]) };
-  }
-
-  function spawnDest(color) {
-    const B = G.bounds;
-    const land = landAreas();
-    let best = null;
-    let bestScore = -Infinity;
-    for (let tries = 0; tries < 500; tries++) {
-      const x = rint(B.x0, B.x1 - 1);
-      const y = rint(B.y0, B.y1 - 1);
-      const cells = [idx(x, y), idx(x + 1, y), idx(x, y + 1), idx(x + 1, y + 1)];
-      if (!cells.every(freeTile)) continue;
-      let crowded = false;
-      for (let yy = y - 1; yy <= y + 2 && !crowded; yy++) {
-        for (let xx = x - 1; xx <= x + 2; xx++) {
-          if (inMap(xx, yy) && G.occ[idx(xx, yy)]) { crowded = true; break; }
-        }
-      }
-      if (crowded) continue;
-      const ports = [
-        [x, y - 1, 0, -1], [x + 1, y - 1, 0, -1], [x, y + 2, 0, 1], [x + 1, y + 2, 0, 1],
-        [x - 1, y, -1, 0], [x - 1, y + 1, -1, 0], [x + 2, y, 1, 0], [x + 2, y + 1, 1, 0],
-      ].filter(([px, py, dx, dy]) => {
-        if (!inB(px, py) || !freeTile(idx(px, py))) return false;
-        const ox = px + dx, oy = py + dy;
-        return inB(ox, oy) && !rough(idx(ox, oy)) && !G.occ[idx(ox, oy)] && land.ok(idx(ox, oy));
-      });
-      if (!ports.length) continue;
-      let score = rnd(0, 3);
-      let nearest = 99;
-      for (const d of G.dests) {
-        const dd = Math.max(Math.abs(d.x - x), Math.abs(d.y - y));
-        nearest = Math.min(nearest, dd + (d.color === color ? -2 : 0));
-      }
-      score += Math.min(nearest, 8);
-      for (const h of G.houses) {
-        const dd = distToBlock(tx(h.i), ty(h.i), { x, y });
-        if (dd < 2) score -= 4;
-      }
-      if (score > bestScore) {
-        bestScore = score;
-        const p = pick(ports);
-        best = { x, y, port: idx(p[0], p[1]) };
-      }
-    }
-    if (!best) return null;
-    const d = {
-      id: G.nextId++, color, x: best.x, y: best.y, ports: [best.port],
-      pins: 0, assigned: 0, overflow: 0, pinT: rnd(6, 9), born: G.time, bigPark: false,
-    };
-    for (const c of [idx(d.x, d.y), idx(d.x + 1, d.y), idx(d.x, d.y + 1), idx(d.x + 1, d.y + 1)]) {
-      G.occ[c] = { kind: 'dest', d };
-      G.deco[c] = 0;
-    }
-    G.occ[best.port] = { kind: 'port', d };
-    G.deco[best.port] = 0;
-    G.dests.push(d);
-    countCutOff();
-    return d;
-  }
-
-  function houseSpotOK(i) {
-    const x = tx(i), y = ty(i);
-    if (!inB(x, y) || !freeTile(i)) return false;
-    // keep a ring clear around buildings
-    for (let yy = y - 1; yy <= y + 1; yy++) {
-      for (let xx = x - 1; xx <= x + 1; xx++) {
+  // ---------------------------------------------------------------- towns
+  function nearOcc(i, r, pred) {
+    for (let yy = ty(i) - r; yy <= ty(i) + r; yy++) {
+      for (let xx = tx(i) - r; xx <= tx(i) + r; xx++) {
         if (!inMap(xx, yy)) continue;
         const o = G.occ[idx(xx, yy)];
-        if (o && (o.kind === 'dest' || o.kind === 'port')) return false;
+        if (o && (!pred || pred(o))) return true;
       }
     }
-    // needs a way out
-    let exits = 0;
-    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-      const xx = x + dx, yy = y + dy;
-      if (!inB(xx, yy)) continue;
-      const j = idx(xx, yy);
-      if (!rough(j) && (!G.occ[j] || G.road[j])) exits++;
-    }
-    if (!exits) return false;
-    // must not box in a neighbouring unconnected house
-    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-      const xx = x + dx, yy = y + dy;
-      if (!inMap(xx, yy)) continue;
-      const j = idx(xx, yy);
-      const o = G.occ[j];
-      if (o && o.kind === 'house' && G.adj[j].size === 0) {
-        let ex = 0;
-        for (const [ex1, ey1] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-          const ax = xx + ex1, ay = yy + ey1;
-          if (!inB(ax, ay)) continue;
-          const k = idx(ax, ay);
-          if (k === i) continue;
-          if (!rough(k) && !G.occ[k]) ex++;
-        }
-        if (!ex) return false;
-      }
-    }
-    return true;
+    return false;
   }
 
-  function spawnHouse(color, near) {
+  // Land you can reach from what's already built without crossing water or hills.
+  function reachableLand() {
+    const seen = new Uint8Array(G.N);
+    const stack = [];
+    const add = (i) => { if (!seen[i]) { seen[i] = 1; stack.push(i); } };
+    for (const t of G.towns) add(t.i);
+    for (const g of G.gens) add(g.i);
+    for (const e of G.edges.values()) { add(e.a); add(e.b); }
+    while (stack.length) {
+      const u = stack.pop();
+      if (rough(u)) continue;
+      for (const [dx, dy] of DIR4) {
+        const x = tx(u) + dx, y = ty(u) + dy;
+        if (!inB(x, y)) continue;
+        const v = idx(x, y);
+        if (!rough(v)) add(v);
+      }
+    }
+    return seen;
+  }
+
+  function spawnTown(first) {
     const B = G.bounds;
-    const mine = G.houses.filter((h) => h.color === color);
-    // Houses only appear across water or hills when you have a bridge or tunnel to reach them.
-    const spare = G.res.bridges - G.bridgesUsed + G.res.tunnels - G.tunnelsUsed;
-    const land = spare > 0 ? null : landAreas();
-    const reachable = (i) => !land || [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => {
-      const x = tx(i) + dx, y = ty(i) + dy;
-      return inB(x, y) && land.ok(idx(x, y));
-    });
-    let spot = -1;
-    for (let tries = 0; tries < 400 && spot < 0; tries++) {
-      let x, y;
-      if (near) {
-        const r = rnd(near.rmin, near.rmax);
-        const a = rnd(0, Math.PI * 2);
-        x = Math.round(near.x + Math.cos(a) * r);
-        y = Math.round(near.y + Math.sin(a) * r);
-      } else if (mine.length && Math.random() < 0.72) {
-        const h = pick(mine);
-        x = tx(h.i) + rint(-2, 2);
-        y = ty(h.i) + rint(-2, 2);
-      } else {
-        x = rint(B.x0, B.x1);
-        y = rint(B.y0, B.y1);
-      }
-      if (!inMap(x, y)) continue;
+    const spare = G.res.sea + G.res.under > 0;
+    const reach = first || spare ? null : reachableLand();
+    const mx = (B.x0 + B.x1) / 2, my = (B.y0 + B.y1) / 2;
+    let best = -1, bestScore = -Infinity;
+    for (let tries = 0; tries < 500; tries++) {
+      const x = rint(B.x0 + 1, B.x1 - 1), y = rint(B.y0 + 1, B.y1 - 1);
       const i = idx(x, y);
-      if (houseSpotOK(i) && reachable(i)) spot = i;
+      if (rough(i) || G.occ[i] || G.adj[i].size) continue;
+      if (reach && !reach[i]) continue;
+      if (nearOcc(i, 1)) continue;
+      if (nearOcc(i, COAL_CLEAR, (o) => o.kind === 'gen' && o.g.type === 'coal')) continue;
+      let open = 0;
+      for (const [dx, dy] of DIR4) { const j = idx(x + dx, y + dy); if (!rough(j) && !G.occ[j]) open++; }
+      if (open < 3) continue;
+      let near = 99;
+      for (const t of G.towns) near = Math.min(near, cheb(i, t.i));
+      const score = first ? -Math.hypot(x - mx, y - my) + rnd(0, 2) : rnd(0, 3) - Math.abs(Math.min(near, 12) - 5);
+      if (score > bestScore) { bestScore = score; best = i; }
     }
-    if (spot < 0 && near) return spawnHouse(color, null);
-    if (spot < 0) return null;
-    const h = { id: G.nextId++, color, i: spot, born: G.time, type: pick(genTypes()) };
-
-    G.occ[spot] = { kind: 'house', h };
-    G.deco[spot] = 0;
-    G.houses.push(h);
-    for (let k = 0; k < CARS_PER_HOUSE; k++) addCar(h);
-    countCutOff();
-    return h;
-  }
-
-  function addCar(h, bus = false) {
-    G.cars.push({
-      id: G.nextId++, house: h, color: h.color, state: 'home', leg: null,
-      path: null, s: 0, t: 0, len: 1, dk: -1, dest: null, timer: 0, wx: 0, wy: 0, ang: 0,
-      bus, cap: bus ? BUS_CAP : 1, load: 0,
-    });
-  }
-
-  function spawnNewDest() {
-    const target = Math.min(COLORS.length, 2 + Math.floor((G.week - 1) / 2));
-    let color;
-    if (G.colorsUsed < target) {
-      color = G.colorsUsed;
-    } else {
-      const counts = new Array(G.colorsUsed).fill(0);
-      for (const d of G.dests) counts[d.color]++;
-      const min = Math.min(...counts);
-      const options = counts.map((c, i) => (c === min ? i : -1)).filter((i) => i >= 0);
-      color = pick(options);
-    }
-    const d = spawnDest(color);
-    if (!d) return;
-    if (color === G.colorsUsed) G.colorsUsed++;
-    const n = G.houses.some((h) => h.color === color) ? 1 : 2;
-    for (let k = 0; k < n; k++) spawnHouse(color, { x: d.x + 0.5, y: d.y + 0.5, rmin: 3, rmax: 7 });
-  }
-
-  function chooseHouseColor() {
-    const dc = new Array(G.colorsUsed).fill(0);
-    const hc = new Array(G.colorsUsed).fill(0);
-    for (const d of G.dests) dc[d.color]++;
-    for (const h of G.houses) hc[h.color]++;
-    const w = dc.map((d, i) => (d ? Math.max(0.3, d * 3 - hc[i] + 1) : 0));
-    let sum = w.reduce((a, b) => a + b, 0);
-    let r = Math.random() * sum;
-    for (let i = 0; i < w.length; i++) { r -= w[i]; if (r <= 0) return i; }
-    return 0;
+    if (best < 0) return null;
+    const t = { id: G.nextId++, i: best, bornDay: G.day, born: G.time, need: 0, served: 0, draw: 0, lit: 0, dark: 0, grid: -1 };
+    G.occ[best] = { kind: 'town', t };
+    G.deco[best] = 0;
+    G.towns.push(t);
+    graphChanged();
+    return t;
   }
 
   function expandBounds() {
@@ -547,890 +356,580 @@
     }
   }
 
-  // ---------------------------------------------------------------- graph
-  function addEdge(a, b, type) {
-    const len = type === 'motor'
-      ? Math.hypot(tx(a) - tx(b), ty(a) - ty(b))
-      : (tx(a) !== tx(b) && ty(a) !== ty(b) ? SQRT2 : 1);
-    const e = { a, b, type, len };
-    G.adj[a].set(b, e);
-    G.adj[b].set(a, e);
-    G.edges.set(ekey(a, b), e);
-    return e;
-  }
-
-  function removeEdge(a, b, refund = true) {
-    const e = G.adj[a].get(b);
-    if (!e) return;
-    G.adj[a].delete(b);
-    G.adj[b].delete(a);
-    G.edges.delete(ekey(a, b));
-    if (e.type === 'motor' && refund) G.res.motors++;
-  }
-
-  // Can a car drive from a to b? Roads are two-way unless made one-way.
-  function canGo(a, b) {
-    const e = G.adj[a].get(b);
-    return !!e && (e.from === undefined || e.from === a);
-  }
-
-  // The graph node a road enters when it reaches tile i from tile j.
-  // On an overpass, east-west traffic uses the upper deck.
-  function nodeFor(i, j) {
-    if (!G.overpass[i]) return i;
-    return ty(i) === ty(j) ? deck(i) : i;
-  }
-
-  // A bridge is a connected run of road tiles over water; a tunnel is the same
-  // through hills. Each one uses up one bridge or tunnel.
-  function spanInfo(layer) {
-    const seen = new Uint8Array(G.N);
-    let count = 0, maxSize = 0;
-    for (let i = 0; i < G.N; i++) {
-      if (!layer[i] || !G.road[i] || seen[i]) continue;
-      count++;
-      maxSize = Math.max(maxSize, spanComponent(i, layer, seen).length);
-    }
-    return { count, maxSize };
-  }
-
-  function spanComponent(start, layer, seen = new Uint8Array(G.N)) {
-    const out = [];
-    const stack = [start];
-    seen[start] = 1;
-    while (stack.length) {
-      const n = stack.pop();
-      out.push(n);
-      for (const m of G.adj[n].keys()) {
-        if (!seen[m] && layer[m] && G.road[m]) { seen[m] = 1; stack.push(m); }
+  // ---------------------------------------------------------------- power stations
+  function coastal(i) {
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        const x = tx(i) + dx, y = ty(i) + dy;
+        if (inMap(x, y) && G.water[idx(x, y)]) return true;
       }
     }
-    return out;
+    return false;
   }
 
-  // Houses that can't get to a building of their colour and back.
-  function countCutOff() {
-    const reach = new Uint8Array(G.N);
-    const walk = (d, forward) => {
-      const seen = new Uint8Array(G.N * 2);
-      const stack = [...d.ports];
-      for (const p of d.ports) seen[p] = 1;
-      const got = [];
-      while (stack.length) {
-        const n = stack.pop();
-        const o = G.occ[n];
-        if (o && o.kind === 'house') { if (o.h.color === d.color) got.push(n); continue; }
-        if (o && o.kind !== 'port') continue;
-        if (o && o.d !== d) continue;
-        for (const m of G.adj[n].keys()) {
-          if (seen[m]) continue;
-          if (forward ? !canGo(n, m) : !canGo(m, n)) continue;
-          seen[m] = 1;
-          stack.push(m);
-        }
-      }
-      return got;
-    };
-    for (const d of G.dests) {
-      const there = new Set(walk(d, false));
-      d.cut = true;
-      for (const n of walk(d, true)) if (there.has(n)) { reach[n] = 1; d.cut = false; }
-    }
-    let n = 0;
-    for (const h of G.houses) {
-      h.cut = !reach[h.i];
-      if (h.cut) n++;
-    }
-    G.cutOff = n;
-  }
-
-  function tryConnect(p, q) {
-    const px = tx(p), py = ty(p), qx = tx(q), qy = ty(q);
-    const dx = qx - px, dy = qy - py;
-    if (Math.max(Math.abs(dx), Math.abs(dy)) !== 1) return 'bad';
-    if (!inB(px, py) || !inB(qx, qy)) return 'bounds';
-    const diag = dx !== 0 && dy !== 0;
-    if (diag && (G.overpass[p] || G.overpass[q])) return 'bad';
-    const pn = nodeFor(p, q), qn = nodeFor(q, p);
-    if (G.adj[pn].has(qn)) return 'ok';
-    const kp = kind(p), kq = kind(q);
-    if (!kp || !kq) return 'bad';
-    const special = (k) => k === 'house' || k === 'port';
-    if (special(kp) || special(kq)) {
-      if (diag) return 'bad';
-      if (special(kp) && special(kq)) return 'bad';
-    }
-    if (kp === 'house' && G.adj[p].size > 0) return 'bad';
-    if (kq === 'house' && G.adj[q].size > 0) return 'bad';
-    if (diag) {
-      const c1 = idx(px + dx, py), c2 = idx(px, py + dy);
-      if (G.adj[c1].has(c2)) return 'bad';
-    }
-    const need = (kp === 'land' ? 1 : 0) + (kq === 'land' ? 1 : 0);
-    if (need > G.res.roads) return 'roads';
-
-    const setP = kp === 'land' || kp === 'water' || kp === 'mount';
-    const setQ = kq === 'land' || kq === 'water' || kq === 'mount';
-    if (setP) G.road[p] = 1;
-    if (setQ) G.road[q] = 1;
-    addEdge(pn, qn, 'road');
-    const undo = (why) => {
-      removeEdge(pn, qn, false);
-      if (setP) G.road[p] = 0;
-      if (setQ) G.road[q] = 0;
-      return why;
-    };
-    if (G.water[p] || G.water[q]) {
-      const info = spanInfo(G.water);
-      if (info.count > G.res.bridges) return undo('bridges');
-      if (info.maxSize > MAX_SPAN) return undo('long');
-    }
-    if (G.mount[p] || G.mount[q]) {
-      const info = spanInfo(G.mount);
-      if (info.count > G.res.tunnels) return undo('tunnels');
-      if (info.maxSize > MAX_SPAN) return undo('long');
-    }
-    if (setP) G.deco[p] = 0;
-    if (setQ) G.deco[q] = 0;
-    G.res.roads -= need;
-    graphChanged();
+  function placeCheck(type, i) {
+    if (i < 0 || !inBi(i)) return 'bounds';
+    if (rough(i)) return 'rough';
+    if (G.occ[i]) return 'occ';
+    if (type === 'coal' && nearOcc(i, COAL_CLEAR, (o) => o.kind === 'town')) return 'coal-near';
     return 'ok';
   }
 
-  function clearRoadTile(t) {
-    for (const n of [...G.adj[t].keys()]) removeEdge(t, n);
-    for (const n of [...G.adj[deck(t)].keys()]) removeEdge(deck(t), n);
-    G.road[t] = 0;
-    if (!rough(t)) G.res.roads++;
-    if (G.round[t]) { G.round[t] = 0; G.res.rounds++; }
-    G.overpass[t] = 0;
-  }
-
-  function eraseAt(i) {
-    const o = G.occ[i];
-    if (o && (o.kind === 'house' || o.kind === 'port')) {
-      if (!G.adj[i].size) return false;
-      for (const n of [...G.adj[i].keys()]) removeEdge(i, n);
-      graphChanged();
-      return true;
-    }
-    if (o || !G.road[i]) return false;
-    if (G.water[i] || G.mount[i]) {
-      for (const t of spanComponent(i, G.water[i] ? G.water : G.mount)) clearRoadTile(t);
-    } else {
-      clearRoadTile(i);
-    }
-    graphChanged();
-    return true;
-  }
-
-  function placeRoundabout(i) {
-    if (G.res.rounds <= 0) { toast('No transformers left. You can pick more at the end of the day.'); return false; }
-    if (!G.road[i] || rough(i) || G.round[i] || G.occ[i]) { toast('Tap a point where cables meet to place a transformer.'); return false; }
-    G.round[i] = 1;
-    G.res.rounds--;
-    graphChanged();
-    return true;
-  }
-
-  function placeMotorway(a, b) {
-    const ka = kind(a), kb = kind(b);
-    const okKind = (k) => k === 'road' || k === 'land';
-    if (!okKind(ka) || !okKind(kb) || rough(a) || rough(b)) {
-      toast('Express lines start and end on land, not on generators or towns.');
-      return false;
-    }
-    if (Math.max(Math.abs(tx(a) - tx(b)), Math.abs(ty(a) - ty(b))) < 2) { toast('Pick an end point further away.'); return false; }
-    if (G.adj[a].has(b)) return false;
-    const need = (ka === 'land' ? 1 : 0) + (kb === 'land' ? 1 : 0);
-    if (need > G.res.roads) { toast('You need a cable tile at each end.'); flashCount('road'); return false; }
-    G.road[a] = 1; G.road[b] = 1; G.deco[a] = 0; G.deco[b] = 0;
-    G.res.roads -= need;
-    addEdge(a, b, 'motor');
-    G.res.motors--;
-    graphChanged();
-    return true;
-  }
-
-  // ---------------------------------------------------------------- upgrades you place
-  const ORTHO = [[0, -1], [0, 1], [-1, 0], [1, 0]];
-
-  function destAt(i) {
-    const o = G.occ[i];
-    return o && (o.kind === 'dest' || o.kind === 'port') ? o.d : null;
-  }
-
-  // Tap a building (or the tile beside it) and a new car park appears on the
-  // free side furthest from its existing ones.
-  function addEntrance(t) {
-    let d = destAt(t);
-    if (!d) {
-      for (const [dx, dy] of ORTHO) {
-        const x = tx(t) + dx, y = ty(t) + dy;
-        if (inMap(x, y) && G.occ[idx(x, y)] && G.occ[idx(x, y)].kind === 'dest') d = G.occ[idx(x, y)].d;
-      }
-    }
-    if (!d) { toast('Tap a town to give it another substation.'); return false; }
-    if (d.ports.length >= 3) { toast('That town already has three substations.'); return false; }
-    const { x, y } = d;
-    const sides = [
-      [x, y - 1, 0, -1], [x + 1, y - 1, 0, -1], [x, y + 2, 0, 1], [x + 1, y + 2, 0, 1],
-      [x - 1, y, -1, 0], [x - 1, y + 1, -1, 0], [x + 2, y, 1, 0], [x + 2, y + 1, 1, 0],
-    ];
-    let best = -1, bestScore = -Infinity;
-    for (const [px, py, dx, dy] of sides) {
-      if (!inB(px, py)) continue;
-      const p = idx(px, py);
-      if (!freeTile(p)) continue;
-      const ox = px + dx, oy = py + dy;
-      const open = inB(ox, oy) && !rough(idx(ox, oy)) && !(G.occ[idx(ox, oy)] && G.occ[idx(ox, oy)].kind !== 'port');
-      let score = open ? 10 : 0;
-      for (const q of d.ports) score += Math.abs(tx(q) - px) + Math.abs(ty(q) - py);
-      if (score > bestScore) { bestScore = score; best = p; }
-    }
-    if (best < 0) { toast('There is no free space around that town.'); return false; }
-    G.occ[best] = { kind: 'port', d };
-    G.deco[best] = 0;
-    d.ports.push(best);
-    G.res.entrances--;
-    G.fx.push({ type: 'poof', x: tx(best) + 0.5, y: ty(best) + 0.5, t: 0 });
-    graphChanged();
-    toast('New substation added. Connect a cable to it.');
-    return true;
-  }
-
-  function bulldoze(i) {
-    if (!inB(tx(i), ty(i)) || !rough(i) || G.road[i]) { toast('Tap a hill or water tile with no cable on it.'); return false; }
-    G.water[i] = 0;
-    G.mount[i] = 0;
-    G.res.dozers--;
-    G.fx.push({ type: 'poof', x: tx(i) + 0.5, y: ty(i) + 0.5, t: 0 });
-    return true;
-  }
-
-  function moveHouse(h, t) {
-    if (!houseSpotOK(t)) { toast('A generator needs an empty tile with room for a cable, away from towns.'); return false; }
-    for (const n of [...G.adj[h.i].keys()]) removeEdge(h.i, n);
-    G.occ[h.i] = null;
-    h.i = t;
-    h.born = G.time;
-    G.occ[t] = { kind: 'house', h };
-    G.deco[t] = 0;
-    G.res.moves--;
-    graphChanged();
-    return true;
-  }
-
-  // ---------------------------------------------------------------- undo
-  // Covers changes to the road network. Each undo puts the roads back and
-  // returns what the change cost, but keeps anything you've earned since.
-  const UNDO_TOOLS = new Set(['road', 'erase', 'round', 'motor']);
-  const NET_RES = ['roads', 'rounds', 'motors'];
-  let undoStack = [];
-  let pendingSnap = null;
-
-  function snapNet() {
-    return {
-      ver: G.gver,
-      road: G.road.slice(), round: G.round.slice(), overpass: G.overpass.slice(),
-      edges: [...G.edges.values()].map((e) => [e.a, e.b, e.type, e.from]),
-      res: { ...G.res },
+  function placeGen(type, i) {
+    if (G.res[type] < 1) return 'none';
+    const r = placeCheck(type, i);
+    if (r !== 'ok') return r;
+    const g = {
+      id: G.nextId++, type, i, born: G.time, out: 0, rate: 0, ang: Math.random() * 6,
+      soc: type === 'battery' ? GEN.battery.store * 0.5 : 0, coast: coastal(i),
     };
-  }
-
-  function commitUndo() {
-    if (!pendingSnap) return;
-    const s = pendingSnap;
-    pendingSnap = null;
-    if (G.gver === s.ver) return;
-    undoStack.push({ s, after: { ...G.res } });
-    if (undoStack.length > 30) undoStack.shift();
-    hudCache = '';
-  }
-
-  function undo() {
-    commitUndo();
-    const u = undoStack.pop();
-    if (!u) return;
-    const { s, after } = u;
-    for (const e of [...G.edges.values()]) removeEdge(e.a, e.b, false);
-    for (let i = 0; i < G.N; i++) {
-      G.road[i] = G.occ[i] ? 0 : s.road[i]; // something may have been built there since
-      G.round[i] = G.road[i] ? s.round[i] : 0;
-      G.overpass[i] = G.road[i] ? s.overpass[i] : 0;
-    }
-    for (const [a, b, type, from] of s.edges) {
-      if (!nodeValid(a) || !nodeValid(b)) continue;
-      const houseFull = (n) => G.occ[n] && G.occ[n].kind === 'house' && G.adj[n].size > 0;
-      if (houseFull(a) || houseFull(b)) continue;
-      const e = addEdge(a, b, type);
-      if (from !== undefined) e.from = from;
-    }
-    for (const k of NET_RES) G.res[k] = Math.max(0, G.res[k] + s.res[k] - after[k]);
+    G.occ[i] = { kind: 'gen', g };
+    G.deco[i] = 0;
+    G.gens.push(g);
+    G.res[type]--;
+    G.owned[type] = true;
+    G.uver++;
     graphChanged();
-    hudCache = '';
-    toast('Undone.');
+    sfx('place');
+    return 'ok';
   }
 
-  function graphChanged() {
-    G.gver = (G.gver || 0) + 1;
-    G.bridgesUsed = spanInfo(G.water).count;
-    G.tunnelsUsed = spanInfo(G.mount).count;
-    for (const c of G.cars) validateCar(c);
-    countCutOff();
+  function removeGen(g) {
+    G.occ[g.i] = null;
+    G.gens = G.gens.filter((x) => x !== g);
+    G.res[g.type]++;
+    G.uver++;
+    graphChanged();
   }
 
-  // ---------------------------------------------------------------- routing
-  function heapPush(h, d, n) {
-    h.push([d, n]);
-    let i = h.length - 1;
-    while (i > 0) {
-      const p = (i - 1) >> 1;
-      if (h[p][0] <= h[i][0]) break;
-      [h[p], h[i]] = [h[i], h[p]];
-      i = p;
+  function sun() {
+    const p = dayPhase();
+    return p < 0.25 || p > 0.75 ? 0 : Math.sin(Math.PI * (p - 0.25) / 0.5);
+  }
+  function avail(g) {
+    if (g.type === 'coal') return GEN.coal.max;
+    if (g.type === 'solar') return GEN.solar.max * sun();
+    if (g.type === 'wind') return GEN.wind.max * G.wind * (g.coast ? 1.3 : 1);
+    return 0;
+  }
+  function genMax(g) { return g.type === 'wind' && g.coast ? GEN.wind.max * 1.3 : GEN[g.type].max; }
+
+  function updateWind(dt) {
+    G.windT -= dt;
+    if (G.windT <= 0) {
+      G.windTarget = Math.random() < 0.25 ? rnd(0, 0.15) : rnd(0.35, 1);
+      G.windT = rnd(10, 22);
     }
-  }
-  function heapPop(h) {
-    const top = h[0];
-    const last = h.pop();
-    if (h.length) {
-      h[0] = last;
-      let i = 0;
-      for (;;) {
-        const l = i * 2 + 1, r = l + 1;
-        let m = i;
-        if (l < h.length && h[l][0] < h[m][0]) m = l;
-        if (r < h.length && h[r][0] < h[m][0]) m = r;
-        if (m === i) break;
-        [h[m], h[i]] = [h[i], h[m]];
-        i = m;
-      }
-    }
-    return top;
+    G.wind += (G.windTarget - G.wind) * Math.min(1, dt * 0.25);
   }
 
-  // Shortest times *to* the targets, so the search walks roads backwards:
-  // stepping from u to v means a car would drive v -> u.
-  function dijkstra(targets, stop = -1) {
-    const list = Array.isArray(targets) ? targets : [targets];
-    const dist = new Float64Array(G.N * 2).fill(Infinity);
-    const prev = new Int32Array(G.N * 2).fill(-1);
-    const heap = [];
-    for (const t of list) { dist[t] = 0; heap.push([0, t]); }
-    while (heap.length) {
-      const [d, u] = heapPop(heap);
-      if (d > dist[u]) continue;
-      if (u === stop) break;
-      if (d > 0 && G.occ[u]) continue; // houses and car parks are ends only
-      for (const [v, e] of G.adj[u]) {
-        if (e.from !== undefined && e.from !== v) continue;
-        let w = e.len / (e.type === 'motor' ? MOTOR_SPEED : CAR_SPEED);
-        if (!G.occ[v] && G.adj[v].size >= 3) w += G.round[v] ? 0.08 : INTER_PENALTY;
-        const nd = d + w;
-        if (nd < dist[v]) { dist[v] = nd; prev[v] = u; heapPush(heap, nd, v); }
-      }
-    }
-    return { dist, prev };
-  }
-
-  function findPath(src, dst) {
-    const targets = Array.isArray(dst) ? dst : [dst];
-    if (targets.includes(src)) return [src];
-    const { dist, prev } = dijkstra(targets, src);
-    if (!isFinite(dist[src])) return null;
-    const path = [];
-    let n = src;
-    while (n !== -1) { path.push(n); if (targets.includes(n)) return path; n = prev[n]; }
-    return null;
-  }
-
-  function dispatch() {
-    for (const d of G.dests) {
-      const waiting = d.pins - d.assigned;
-      if (waiting <= 0) continue;
-      const idle = G.cars.filter((c) => c.color === d.color && c.state === 'home' && !c.retire && genOnline(c.house));
-      if (!idle.length) continue;
-      const { dist, prev } = dijkstra(d.ports);
-      let best = null, bd = Infinity;
-      for (const c of idle) {
-        const v = dist[c.house.i];
-        if (v < bd) { bd = v; best = c; }
-      }
-      if (!best) continue;
-      const path = [];
-      let n = best.house.i;
-      while (n !== -1) { path.push(n); if (d.ports.includes(n)) break; n = prev[n]; }
-      if (!d.ports.includes(path[path.length - 1])) continue;
-      best.leg = 'out';
-      best.dest = d;
-      best.path = path;
-      best.s = 0;
-      best.state = 'wait';
-      best.load = Math.min(best.cap, waiting);
-      d.assigned += best.load;
-    }
-  }
-
-  // ---------------------------------------------------------------- cars
-  function queueOf(k) {
-    let q = G.queues.get(k);
-    if (!q) { q = []; G.queues.set(k, q); }
-    return q;
-  }
-  // A one-way road has two lanes going the same way, so it carries twice the cars.
-  const LANE2 = 2 ** 30;
-  function laneRoom(k) {
-    const q = G.queues.get(k);
-    return !q || !q.length ? Infinity : q[q.length - 1].t;
-  }
-  // Which lane a car can join on a -> b: 0, 1, or -1 when both are full.
-  function freeLane(a, b) {
-    const k = dkey(a, b);
-    const r0 = laneRoom(k);
-    const e = G.adj[a].get(b);
-    if (!e || e.from === undefined) return r0 >= GAP ? 0 : -1;
-    const r1 = laneRoom(k + LANE2);
-    if (Math.max(r0, r1) < GAP) return -1;
-    return r0 >= r1 ? 0 : 1;
-  }
-  function enterEdge(car, s, lane) {
-    const a = car.path[s], b = car.path[s + 1];
-    const e = G.adj[a].get(b);
-    car.s = s; car.t = 0; car.len = e.len; car.motor = e.type === 'motor';
-    car.lane = lane;
-    car.dk = dkey(a, b) + (lane ? LANE2 : 0);
-    queueOf(car.dk).push(car);
-    car.state = 'drive';
-  }
-  function leaveEdge(car) {
-    if (car.dk < 0) return;
-    const q = G.queues.get(car.dk);
-    if (q) {
-      const i = q.indexOf(car);
-      if (i >= 0) q.splice(i, 1);
-      if (!q.length) G.queues.delete(car.dk);
-    }
-    car.dk = -1;
-  }
-  function isJunction(n) {
-    return G.road[n] && G.adj[n].size >= 3;
-  }
-  function passJunction(n) {
-    const o = G.occ[n];
-    const gate = !!o && o.kind === 'port';
-    if (!gate && !isJunction(n)) return true;
-    if (G.lock[n] > G.time) return false;
-    G.lock[n] = G.time + (gate ? GATE_CROSS * (o.d.bigPark ? BIG_PARK : 1)
-      : G.round[n] ? ROUND_CROSS
-      : CROSS + CROSS_PER_ARM * (G.adj[n].size - 3));
-    return true;
-  }
-
-  function carTarget(car) {
-    return car.leg === 'out' ? car.dest.ports : car.house.i;
-  }
-
-  // Give up on the visit this car was heading to, so another car can take it.
-  function dropTrip(car) {
-    if (car.leg === 'out' && car.dest) car.dest.assigned = Math.max(0, car.dest.assigned - car.load);
-    car.dest = null;
-    car.load = 0;
-    car.leg = 'back';
-  }
-
-  function goneHome(car) {
-    car.state = car.retire ? 'gone' : 'home';
-    car.leg = null; car.path = null; car.dest = null; car.load = 0;
-  }
-
-  function poof(car) {
-    const p = carPos(car);
-    if (p) G.fx.push({ type: 'poof', x: p.x, y: p.y, t: 0 });
-    leaveEdge(car);
-    dropTrip(car);
-    goneHome(car);
-  }
-
-  function pathOK(path, from) {
-    for (let k = from; k < path.length - 1; k++) if (!canGo(path[k], path[k + 1])) return false;
-    return true;
-  }
-
-  function replanFrom(car, node) {
-    let np = findPath(node, carTarget(car));
-    if (!np && car.leg === 'out') {
-      dropTrip(car);
-      np = findPath(node, car.house.i);
-    }
-    if (!np) { poof(car); return; }
-    car.path = np; car.s = 0; car.state = 'wait';
-    if (np.length === 1) arrive(car);
-  }
-
-  function validateCar(car) {
-    if (car.state === 'drive') {
-      const a = car.path[car.s], b = car.path[car.s + 1];
-      if (!G.adj[a].has(b)) {
-        leaveEdge(car);
-        let node = car.t > car.len / 2 ? b : a;
-        if (!nodeValid(node)) node = node === a ? b : a;
-        if (!nodeValid(node)) { poof(car); return; }
-        car.wx = tx(node) + 0.5; car.wy = ty(node) + 0.5;
-        replanFrom(car, node);
-        return;
-      }
-      // re-route only when the planned way is broken
-      if (!pathOK(car.path, car.s + 1) || !nodeValid(car.path[car.path.length - 1])) {
-        let np = findPath(b, carTarget(car));
-        if (!np && car.leg === 'out') {
-          dropTrip(car);
-          np = findPath(b, car.house.i);
-        }
-        if (!np) { poof(car); return; }
-        car.path = [a, ...np];
-        car.s = 0;
-      }
-    } else if (car.state === 'wait') {
-      const broken = (car.leg === 'out' && !car.dest) || !pathOK(car.path, 0) || !nodeValid(car.path[car.path.length - 1]);
-      if (broken || !nodeValid(car.path[0])) {
-        if (!nodeValid(car.path[0])) { poof(car); return; }
-        replanFrom(car, car.path[0]);
-      }
-    }
-  }
-
-  function arrive(car) {
-    leaveEdge(car);
-    if (car.leg === 'out') {
-      const d = car.dest;
-      const port = car.path[car.path.length - 1];
-      d.pins = Math.max(0, d.pins - car.load);
-      d.assigned = Math.max(0, d.assigned - car.load);
-      G.score += car.load;
-      car.load = 0;
-      G.fx.push({ type: 'ring', x: tx(port) + 0.5, y: ty(port) + 0.5, t: 0, color: COLORS[d.color].fill });
-      car.state = 'park';
-      car.timer = DWELL;
-      car.at = port;
-    } else {
-      goneHome(car);
-    }
-  }
-
-  function updateCar(car, dt) {
-    switch (car.state) {
-      case 'home':
-        return;
-      case 'park':
-        car.timer -= dt;
-        if (car.timer <= 0) {
-          const port = car.at;
-          car.dest = null;
-          car.leg = 'back';
-          const p = findPath(port, car.house.i);
-          if (!p) { car.timer = 0.5; car.stuck = (car.stuck || 0) + 0.5; if (car.stuck > 6) { car.stuck = 0; poof(car); } return; }
-          car.stuck = 0;
-          car.path = p; car.s = 0; car.state = 'wait';
-        }
-        return;
-      case 'wait': {
-        const a = car.path[0], b = car.path[1];
-        if (b === undefined) { arrive(car); return; }
-        if (!canGo(a, b)) { validateCar(car); return; }
-        const lane = freeLane(a, b);
-        if (lane < 0) return;
-        if (!passJunction(a)) return;
-        enterEdge(car, 0, lane);
-        return;
-      }
-      case 'drive': {
-        const speed = (car.motor ? MOTOR_SPEED : CAR_SPEED) * (car.bus ? BUS_SPEED : 1);
-        const q = G.queues.get(car.dk);
-        const qi = q ? q.indexOf(car) : -1;
-        let lim = car.len;
-        if (qi > 0) lim = Math.min(lim, q[qi - 1].t - GAP);
-        if (car.t < lim) car.t = Math.min(lim, car.t + speed * dt);
-        if (car.t >= car.len - 1e-4) {
-          const s1 = car.s + 1;
-          if (s1 === car.path.length - 1) {
-            if (passJunction(car.path[s1])) arrive(car);
-            return;
-          }
-          const a = car.path[s1], b = car.path[s1 + 1];
-          if (!canGo(a, b)) { validateCar(car); return; }
-          const lane = freeLane(a, b);
-          if (lane < 0) return;
-          if (!passJunction(a)) return;
-          leaveEdge(car);
-          enterEdge(car, s1, lane);
-        }
-        return;
-      }
-    }
-  }
-
-  function carPos(car) {
-    if (car.state === 'drive') {
-      const a = car.path[car.s], b = car.path[car.s + 1];
-      const ax = tx(a) + 0.5, ay = ty(a) + 0.5, bx = tx(b) + 0.5, by = ty(b) + 0.5;
-      const f = clamp(car.t / car.len, 0, 1);
-      const dx = (bx - ax) / car.len, dy = (by - ay) / car.len;
-      // pulses run down the middle of the cable; a doubled cable carries two side by side
-      const off = car.lane ? -0.07 : 0;
-      return { x: ax + (bx - ax) * f + dy * off, y: ay + (by - ay) * f - dx * off, ang: Math.atan2(dy, dx) };
-    }
-    if (car.state === 'wait' && car.path && !G.occ[car.path[0]]) {
-      return { x: tx(car.path[0]) + 0.5, y: ty(car.path[0]) + 0.5, ang: car.ang || 0 };
-    }
-    return null;
-  }
-
-  // A road counts as jammed while cars on it are crawling or stopped.
-  // The level eases up and down so the red tint doesn't flicker.
-  function updateJams(dt) {
-    const stuck = new Map();
-    for (const d of G.dests) d.late = 0;
-    for (const c of G.cars) {
-      if (c.state !== 'drive' || c.dk !== c.prevDk) { c.stuckT = 0; continue; }
-      const free = (c.motor ? MOTOR_SPEED : CAR_SPEED) * (c.bus ? BUS_SPEED : 1) * dt;
-      if (c.t - c.prevT >= free * 0.4) { c.stuckT = 0; continue; }
-      c.stuckT = (c.stuckT || 0) + dt;
-      if (c.leg === 'out' && c.dest && c.stuckT > LATE) c.dest.late += c.load || 1;
-      const e = G.adj[c.path[c.s]].get(c.path[c.s + 1]);
-      if (e) stuck.set(e, (stuck.get(e) || 0) + 1);
-    }
-    const k = Math.min(1, dt * 1.5);
-    for (const e of G.edges.values()) {
-      const target = Math.min(1, (stuck.get(e) || 0) / 2);
-      e.jam = (e.jam || 0) + (target - (e.jam || 0)) * k;
-    }
-  }
-
-  // ---------------------------------------------------------------- simulation
-  // More visitors from the start, so you can see where traffic will build up,
-  // and a gentler climb after that.
-  // ---- Generator types. Coal is steady. Solar only runs in daylight. Wind comes and goes.
-  // An offline generator's cars stay parked, so a town needs a mix. A battery keeps one running.
-  function genTypes() {
-    if (G.week < G.map.solar) return ['coal'];
-    if (G.week < G.map.wind) return ['coal', 'coal', 'solar'];
-    return ['coal', 'coal', 'coal', 'solar', 'solar', 'wind'];
-  }
-  // dayPhase is the clock: 0 midnight, 0.25 sunrise, 0.5 noon, 0.75 sunset. Each week starts at sunrise.
-  function sunUp() { const p = dayPhase(); return p >= 0.25 && p < 0.75; }
-  function genOnline(h) {
-    if (h.battery || !h.type || h.type === 'coal') return true;
-    return h.type === 'solar' ? sunUp() : h.windOn !== false;
-  }
-  function updateGens(dt) {
-    for (const h of G.houses) {
-      if (h.type !== 'wind') continue;
-      h.windT = (h.windT === undefined ? rnd(10, 25) : h.windT) - dt;
-      if (h.windT <= 0) {
-        h.windOn = h.windOn === false;
-        h.windT = h.windOn ? rnd(14, 30) : rnd(7, 13);
-      }
-    }
-  }
-
-  // ---- Day and night. One day lasts one week: demand dips overnight and peaks in the evening.
-  const TRIP_AFTER = 9;         // seconds of heavy overload before a cable trips
-  const TRIP_GAP = 25;          // at most one trip this often, so it stays an event
-  const TRIP_RESET = 12;        // seconds before a tripped cable resets on its own
-  function dayPhase() { return (G.weekT / WEEK_LEN + 0.25) % 1; } // each week starts at sunrise
-  function demandMult() { return 1 + G.map.swing * Math.sin(2 * Math.PI * (dayPhase() - 0.55)); } // peaks at 0.8, dips at 0.3
+  // ---------------------------------------------------------------- day and night
+  // dayPhase is the clock: 0 midnight, 0.25 sunrise, 0.5 noon, 0.75 sunset. Each day starts at sunrise.
+  function dayPhase() { return (G.dayT / DAY_LEN + 0.25) % 1; }
+  function demandMult() { return 1 + G.map.swing * Math.sin(2 * Math.PI * (dayPhase() - 0.55)); } // peaks at 0.8, just after sunset
   function dayLabel() {
     const p = dayPhase();
     return p < 0.25 || p >= 0.9 ? 'Night' : p < 0.5 ? 'Morning' : p < 0.7 ? 'Afternoon' : 'Evening peak';
   }
+  function townBase(t) { return Math.min(6, 2 + 0.35 * (G.day - t.bornDay)); }
+  function townDemand(t) { return townBase(t) * G.map.demand * demandMult(); }
 
-  // Sustained overload trips the breaker: the cable drops out for a while.
-  // A transformer at either end protects it. Tap the gap to reset it early.
-  function updateTrips(dt) {
-    // a trip whose cable was redrawn (or undone) is already fixed
-    G.trips = G.trips.filter((t) => !G.adj[t.e.a].has(t.e.b));
-    for (const t of G.trips) t.left -= dt;
-    for (const t of G.trips) if (t.left <= 0) restoreTrip(t);
-    if (G.week < G.map.trip) return;
-    G.tripCD = Math.max(0, (G.tripCD || 0) - dt);
-    // Only trunk cables trip: never a generator's own link or a substation gate.
-    const end = (n) => !isDeck(n) && G.occ[n] && (G.occ[n].kind === 'house' || G.occ[n].kind === 'port');
+  // ---------------------------------------------------------------- graph
+  function edgeLen(a, b) { return Math.hypot(tx(a) - tx(b), ty(a) - ty(b)); }
+  function addEdge(a, b, kind, lvl = 1, run = 0) {
+    const e = { a, b, kind, lvl, run, len: edgeLen(a, b), flow: 0, load: 0, heat: 0 };
+    linkEdge(e);
+    return e;
+  }
+  function linkEdge(e) {
+    G.adj[e.a].set(e.b, e);
+    G.adj[e.b].set(e.a, e);
+    G.edges.set(ekey(e.a, e.b), e);
+  }
+  function removeEdge(e) {
+    G.adj[e.a].delete(e.b);
+    G.adj[e.b].delete(e.a);
+    G.edges.delete(ekey(e.a, e.b));
+  }
+  const capOf = (e) => (e.kind === 'link' ? LINK_CAP : STRAND_CAP * e.lvl);
+  const condOf = (e) => (e.kind === 'link' ? 4 / e.len : e.lvl / e.len);
+  const allEdges = () => [...G.edges.values(), ...G.trips.map((t) => t.e)];
+  function graphChanged() { G.gver++; }
+
+  // two diagonal cables can't cross in the middle of a square
+  function crosses(a, b) {
+    const ax = tx(a), ay = ty(a), bx = tx(b), by = ty(b);
+    if (ax === bx || ay === by) return false;
+    const other = G.edges.get(ekey(idx(ax, by), idx(bx, ay)));
+    return !!other && other.kind !== 'link';
+  }
+
+  function newStroke() { return { run: null, touched: new Set(), warned: false }; }
+
+  // Lay one step of cable from a to b. Drawing along a cable that's already
+  // there adds a strand to it instead.
+  function tryConnect(a, b, st) {
+    if (a === b) return 'ok';
+    if (!inBi(a) || !inBi(b)) return 'bounds';
+    if (cheb(a, b) !== 1) return 'bad';
+    const k = ekey(a, b);
+    const ex = G.edges.get(k);
+    if (ex) {
+      if (ex.kind === 'link' || st.touched.has(ex)) return 'ok';
+      st.touched.add(ex);
+      if (ex.lvl >= MAX_STRANDS) return 'max';
+      if (G.res.cable < 1) return 'cable';
+      ex.lvl++;
+      G.res.cable--;
+      G.uver++;
+      G.fx.push({ type: 'strand', x: (tx(a) + tx(b)) / 2 + 0.5, y: (ty(a) + ty(b)) / 2 + 0.5, t: 0 });
+      graphChanged();
+      sfx('strand');
+      return 'ok';
+    }
+    const trip = G.trips.find((t) => ekey(t.e.a, t.e.b) === k);
+    if (trip) {
+      if (trip.lock > 0) { st.lockedTrip = trip; return 'locked'; }
+      st.touched.add(trip.e);
+      restoreTrip(trip);
+      return 'ok';
+    }
+    if (crosses(a, b)) return 'cross';
+    const ra = rough(a), rb = rough(b);
+    let kind = 'land', run = 0;
+    if (ra || rb) {
+      if (!ra) {
+        const tk = terrainOf(b);
+        if (G.res[tk] < 1) return tk;
+        if (G.res.cable < 1) return 'cable';
+        st.run = { id: G.nextId++, kind: tk, len: 1, edges: [], open: true, last: a };
+      } else {
+        if (!st.run || !st.run.open || st.run.last !== a) return 'bad';
+        if (rb) {
+          if (terrainOf(b) !== st.run.kind) return 'bad';
+          if (st.run.len >= MAX_SPAN) return 'long';
+          st.run.len++;
+        }
+      }
+      kind = st.run.kind;
+      run = st.run.id;
+    }
+    if (G.res.cable < 1) return 'cable';
+    const e = addEdge(a, b, kind, 1, run);
+    G.res.cable--;
+    G.uver++;
+    st.touched.add(e);
+    if (run) {
+      st.run.edges.push(e);
+      st.run.last = b;
+      if (!rb) {
+        st.run.open = false;
+        G.res[st.run.kind]--;
+        G.runs.set(run, st.run.kind);
+        st.run = null;
+      }
+    }
+    graphChanged();
+    return 'ok';
+  }
+
+  // A sea or underground cable left unfinished at the end of a drag is taken back up.
+  function endStroke(st) {
+    if (st && st.run && st.run.open) {
+      for (const e of st.run.edges) { removeEdge(e); G.res.cable += e.lvl; }
+      st.run = null;
+      graphChanged();
+    }
+  }
+
+  function eraseEdge(e) {
+    const drop = (x) => {
+      if (G.edges.get(ekey(x.a, x.b)) === x) removeEdge(x);
+      G.trips = G.trips.filter((t) => t.e !== x);
+      if (x.kind === 'link') G.res.link++;
+      else G.res.cable += x.lvl;
+    };
+    if (e.run) {
+      for (const x of allEdges().filter((y) => y.run === e.run)) drop(x);
+      const kind = G.runs.get(e.run);
+      if (kind) { G.res[kind]++; G.runs.delete(e.run); }
+    } else drop(e);
+  }
+
+  function eraseAt(i) {
+    let any = false;
+    for (const e of allEdges().filter((x) => x.a === i || x.b === i)) {
+      if (G.edges.get(ekey(e.a, e.b)) === e || G.trips.some((t) => t.e === e)) { eraseEdge(e); any = true; }
+    }
+    if (G.guard[i]) { G.guard[i] = 0; G.res.guard++; any = true; }
+    if (any) { G.uver++; graphChanged(); }
+    return any;
+  }
+
+  function placeLink(a, b) {
+    if (G.res.link < 1) return 'none';
+    for (const i of [a, b]) if (!inBi(i) || rough(i)) return 'rough';
+    const d = edgeLen(a, b);
+    if (d > LINK_RANGE) return 'far';
+    if (d < 2) return 'short';
+    if (G.edges.has(ekey(a, b))) return 'exists';
+    addEdge(a, b, 'link');
+    G.res.link--;
+    G.owned.link = true;
+    G.uver++;
+    graphChanged();
+    sfx('strand');
+    return 'ok';
+  }
+
+  function placeGuard(i) {
+    if (G.res.guard < 1) return 'none';
+    if (!G.adj[i].size && !G.trips.some((t) => t.e.a === i || t.e.b === i)) return 'nocable';
+    if (G.guard[i]) return 'already';
+    G.guard[i] = 1;
+    G.res.guard--;
+    G.owned.guard = true;
+    G.uver++;
+    for (const e of G.adj[i].values()) e.heat = 0;
+    sfx('strand');
+    return 'ok';
+  }
+
+  // ---------------------------------------------------------------- power flow
+  // Every tile with a cable is a node. Each separate grid shares its power out:
+  // solar and wind first, then coal, with batteries soaking up spare power or
+  // covering a shortfall. If a grid is still short, every town on it gets the
+  // same share. Then the flow along each cable is worked out the way current
+  // really splits: more strands and shorter routes carry more.
+  function solveFlow() {
+    const N = G.N;
+    const comp = G.comp;
+    comp.fill(-1);
+    const comps = [];
+    for (const g of G.gens) { g.out = 0; g.rate = 0; }
+    for (const t of G.towns) { t.need = townDemand(t); t.draw = 0; t.served = 0; t.grid = -1; }
+    for (const e of G.edges.values()) e.flow = 0;
+    for (let s = 0; s < N; s++) {
+      if (comp[s] >= 0 || !G.adj[s].size) continue;
+      const id = comps.length;
+      const nodes = [s];
+      comp[s] = id;
+      for (let k = 0; k < nodes.length; k++) {
+        for (const v of G.adj[nodes[k]].keys()) if (comp[v] < 0) { comp[v] = id; nodes.push(v); }
+      }
+      comps.push({ id, nodes, towns: [], gens: [], supply: 0, demand: 0, served: 0 });
+    }
+    for (const t of G.towns) if (comp[t.i] >= 0) { comps[comp[t.i]].towns.push(t); t.grid = comp[t.i]; }
+    for (const g of G.gens) if (comp[g.i] >= 0) comps[comp[g.i]].gens.push(g);
+    const P = new Float64Array(N);
+    let supply = 0, demand = 0, losses = 0;
+    for (const t of G.towns) demand += t.need;
+    for (const c of comps) {
+      c.loss = 0;
+      dispatch(c, P);
+      solveComp(c, P);
+      // Busy cables lose some of their power as heat, so the grid has to make
+      // extra to cover it. Work out the loss, then share the power out again.
+      let L = 0;
+      for (const v of c.nodes) for (const e of G.adj[v].values()) if (v === e.a) L += edgeLoss(e);
+      c.loss = Math.min(L, 0.6 * c.demand);
+      if (c.loss > 0.01) {
+        for (const v of c.nodes) P[v] = 0;
+        dispatch(c, P);
+        solveComp(c, P);
+      }
+      supply += c.supply;
+      losses += c.loss;
+    }
+    for (const e of G.edges.values()) { e.load = Math.abs(e.flow) / capOf(e); e.loss = edgeLoss(e); }
+    G.comps = comps;
+    G.supply = supply;
+    G.demand = demand;
+    G.losses = losses;
+  }
+
+  // Heat loss grows with how full a cable is and how long it is, so a busy
+  // line wastes far more than a quiet one, and extra strands cut the waste.
+  function edgeLoss(e) {
+    const f = Math.abs(e.flow);
+    const load = f / capOf(e);
+    return f * load * e.len * (e.kind === 'link' ? LINK_LOSS : LOSS_RATE);
+  }
+
+  function dispatch(c, P) {
+    let towns = 0;
+    for (const t of c.towns) towns += t.need;
+    const D = towns + c.loss;
+    let R = 0, C = 0, chargeRoom = 0, dischargeRoom = 0;
+    for (const g of c.gens) {
+      if (g.type === 'battery') {
+        g.cIn = g.soc < GEN.battery.store - 0.01 ? GEN.battery.max : 0;
+        g.cOut = g.soc > 0.01 ? GEN.battery.max : 0;
+        chargeRoom += g.cIn;
+        dischargeRoom += g.cOut;
+      } else if (g.type === 'coal') C += avail(g);
+      else R += avail(g);
+    }
+    const A = R + C;
+    let total, served, batt;
+    if (A >= D) {
+      const charge = Math.min(A - D, chargeRoom);
+      batt = -charge;
+      total = D + charge;
+      served = D > 0 ? 1 : 0;
+    } else {
+      const dis = Math.min(D - A, dischargeRoom);
+      batt = dis;
+      total = A;
+      served = D > 0 ? (A + dis) / D : 0;
+    }
+    const rOut = Math.min(R, total), cOut = total - rOut;
+    for (const g of c.gens) {
+      if (g.type === 'battery') {
+        g.rate = batt > 0 ? (dischargeRoom ? (batt * g.cOut) / dischargeRoom : 0) : (chargeRoom ? (batt * g.cIn) / chargeRoom : 0);
+        g.out = g.rate;
+      } else {
+        const a = avail(g);
+        g.out = g.type === 'coal' ? (C ? (a * cOut) / C : 0) : (R ? (a * rOut) / R : 0);
+      }
+      P[g.i] += g.out;
+    }
+    for (const t of c.towns) {
+      t.served = served;
+      t.draw = t.need * served;
+      P[t.i] -= (t.need + (towns > 0 ? (c.loss * t.need) / towns : 0)) * served;
+    }
+    c.supply = A + dischargeRoom;
+    c.avail = A;
+    c.demand = towns;
+    c.served = served;
+  }
+
+  // Conjugate gradient on the grid's network, with one node held at zero.
+  function solveComp(c, P) {
+    const nodes = c.nodes, n = nodes.length;
+    if (n < 2) return;
+    let any = false;
+    for (const v of nodes) if (Math.abs(P[v]) > 1e-9) { any = true; break; }
+    const th = G.theta;
+    if (!any) { for (const v of nodes) th[v] = 0; return; }
+    const loc = new Map();
+    nodes.forEach((v, k) => loc.set(v, k));
+    const nbJ = [], nbG = [];
+    for (let k = 0; k < n; k++) {
+      const js = [], gs = [];
+      for (const [w, e] of G.adj[nodes[k]]) { js.push(loc.get(w)); gs.push(condOf(e)); }
+      nbJ.push(js); nbG.push(gs);
+    }
+    const x = new Float64Array(n), b = new Float64Array(n), r = new Float64Array(n), p = new Float64Array(n), Ap = new Float64Array(n);
+    const t0 = th[nodes[0]];
+    let bn = 0;
+    for (let k = 1; k < n; k++) { x[k] = th[nodes[k]] - t0; b[k] = P[nodes[k]]; bn += b[k] * b[k]; }
+    const mul = (v, out) => {
+      for (let k = 1; k < n; k++) {
+        let s = 0;
+        const js = nbJ[k], gs = nbG[k];
+        for (let q = 0; q < js.length; q++) s += gs[q] * (v[k] - (js[q] === 0 ? 0 : v[js[q]]));
+        out[k] = s;
+      }
+    };
+    mul(x, Ap);
+    let rs = 0;
+    for (let k = 1; k < n; k++) { r[k] = b[k] - Ap[k]; p[k] = r[k]; rs += r[k] * r[k]; }
+    const tol = 1e-10 * (1 + bn);
+    for (let it = 0; it < 4 * n + 20 && rs > tol; it++) {
+      mul(p, Ap);
+      let pAp = 0;
+      for (let k = 1; k < n; k++) pAp += p[k] * Ap[k];
+      if (pAp <= 0) break;
+      const alpha = rs / pAp;
+      let rsn = 0;
+      for (let k = 1; k < n; k++) { x[k] += alpha * p[k]; r[k] -= alpha * Ap[k]; rsn += r[k] * r[k]; }
+      const beta = rsn / rs;
+      rs = rsn;
+      for (let k = 1; k < n; k++) p[k] = r[k] + beta * p[k];
+    }
+    th[nodes[0]] = 0;
+    for (let k = 1; k < n; k++) th[nodes[k]] = x[k];
+    for (const v of nodes) {
+      for (const e of G.adj[v].values()) if (v === e.a) e.flow = condOf(e) * (th[e.a] - th[e.b]);
+    }
+  }
+
+  // ---------------------------------------------------------------- overload and trips
+  // A cable that carries more than it's rated for heats up and trips. Its power
+  // moves straight onto the other cables, which may then overload too.
+  function updateHeat(dt) {
+    G.tripCD = Math.max(0, G.tripCD - dt);
     let worst = null;
     for (const e of G.edges.values()) {
-      if (e.type === 'motor' || end(e.a) || end(e.b)) continue;
-      if (e.jam > 0.85 && !G.round[base(e.a)] && !G.round[base(e.b)]) e.hot = (e.hot || 0) + dt;
-      else e.hot = Math.max(0, (e.hot || 0) - dt * 2);
-      if (e.hot > TRIP_AFTER && (!worst || e.hot > worst.hot)) worst = e;
+      const guarded = G.guard[e.a] || G.guard[e.b];
+      if (e.load > 1 && !guarded) e.heat += HEAT_RATE * (e.load - 1) * dt;
+      else e.heat = Math.max(0, e.heat - COOL_RATE * dt);
+      if (e.heat >= 1 && (!worst || e.heat > worst.heat)) worst = e;
     }
-    if (worst && G.tripCD <= 0) {
-      const e = worst;
-      G.tripCD = TRIP_GAP;
-      removeEdge(e.a, e.b, false);
-      G.trips.push({ e, left: TRIP_RESET, occA: G.occ[base(e.a)], occB: G.occ[base(e.b)] });
-      e.hot = 0; e.jam = 0;
-      const mx = (tx(base(e.a)) + tx(base(e.b))) / 2 + 0.5, my = (ty(base(e.a)) + ty(base(e.b))) / 2 + 0.5;
-      G.fx.push({ type: 'poof', x: mx, y: my, t: 0 });
+    if (worst && G.tripCD <= 0) tripEdge(worst);
+  }
+
+  // A breaker that trips is locked for a few seconds, longer each time the same
+  // cable trips again. A cable that trips while badly overloaded, or trips a
+  // third time in a row, burns out: it's gone, strands and all.
+  function tripEdge(e) {
+    const loadNow = e.load;
+    e.trips = G.time - (e.lastTrip === undefined ? -999 : e.lastTrip) < TRIP_MEMORY ? (e.trips || 0) + 1 : 1;
+    e.lastTrip = G.time;
+    const burn = e.kind === 'land' && (loadNow >= BURN_LOAD || e.trips >= BURN_TRIPS);
+    removeEdge(e);
+    e.heat = 0; e.flow = 0; e.load = 0;
+    const mx = (tx(e.a) + tx(e.b)) / 2 + 0.5, my = (ty(e.a) + ty(e.b)) / 2 + 0.5;
+    if (burn) {
+      G.scorch.push({ a: e.a, b: e.b, left: 10 });
+      G.burnt_total++;
+      undoStack = [];
+      pendingSnap = null;
+      hudCache = '';
+      G.tripCD = CASCADE_GAP;
+      G.chain = G.time - G.chainT < 4 ? G.chain + 1 : 1;
+      G.chainT = G.time;
+      G.longestChain = Math.max(G.longestChain, G.chain);
+      G.fx.push({ type: 'spark', x: mx, y: my, t: 0 });
       graphChanged();
-      sfx('trip');
-      if (!mechTip('trip', 'A cable carried too much for too long, so its breaker tripped. It comes back on by itself in a few seconds, or tap the gap to reset it now. Transformers stop cables tripping.')) toast('A cable tripped. Tap the gap to reset it.');
-    }
-  }
-
-  function restoreTrip(t) {
-    G.trips = G.trips.filter((x) => x !== t);
-    const { a, b, type, from } = t.e;
-    // skip if the player rebuilt or erased it, or a tile now holds something else
-    if (G.adj[a].has(b) || !nodeValid(a) || !nodeValid(b)) return;
-    if (G.occ[base(a)] !== t.occA || G.occ[base(b)] !== t.occB) return;
-    const houseFull = (n) => G.occ[n] && G.occ[n].kind === 'house' && G.adj[n].size > 0;
-    if (houseFull(a) || houseFull(b)) return;
-    const e = addEdge(a, b, type);
-    if (from !== undefined) e.from = from;
-    graphChanged();
-  }
-
-  // The climb never stops: late weeks keep getting busier until the roads give out.
-  function pinInterval(d) {
-    const rush = G.rush && G.rush.color === d.color ? G.rush.mult : 1;
-    return Math.max(0.15, Math.max(0.3, 3 * Math.pow(0.93, G.week - 1)) / G.map.demand / rush / demandMult());
-  }
-
-  // Rush hour: every building of one colour gets a burst of visitors for a short while.
-  const RUSH_FROM_WEEK = 6;
-  function updateRush(dt) {
-    if (G.rush) {
-      G.rush.left -= dt;
-      if (G.rush.left <= 0) G.rush = null;
+      solveFlow();
+      G.fver = G.gver;
+      sfx('cascade');
+      const why = loadNow >= BURN_LOAD ? `It was carrying ${Math.round(loadNow * 100)}% of what it’s rated for.` : 'It tripped three times in a row.';
+      if (!mechTip('burn', `A cable burned out. ${why} It’s gone, strands and all, so you’ll need to lay it again. More strands, or another route, stop this happening.`)) toast(`A cable burned out. ${why}`);
       return;
     }
-    if (G.week < RUSH_FROM_WEEK) return;
-    G.nextRush -= dt;
-    if (G.nextRush > 0) return;
-    const colors = [...new Set(G.dests.map((d) => d.color))];
-    if (!colors.length) return;
-    const color = pick(colors);
-    const mult = 2 + Math.min(1.5, (G.week - RUSH_FROM_WEEK) * 0.08);
-    G.rush = { color, left: 18, mult };
-    G.nextRush = rnd(55, 80) * Math.max(0.5, 1 - (G.week - RUSH_FROM_WEEK) * 0.02);
-    toast(`Demand surge in the ${COLORS[color].name} towns.`);
-  }
-
-  // When the map has no room for new houses, an old household moves out and a
-  // new one (maybe a different colour) moves in, so the roads slowly go out of date.
-  function churnHouse() {
-    const movable = G.houses.filter((h) => !h.bus && !h.battery && G.cars.every((c) => c.house !== h || c.state === 'home'));
-    if (!movable.length) return;
-    const h = pick(movable);
-    const i = h.i;
-    for (const n of [...G.adj[i].keys()]) removeEdge(i, n);
-    G.occ[i] = null;
-    G.houses = G.houses.filter((x) => x !== h);
-    G.cars = G.cars.filter((c) => c.house !== h);
-    G.fx.push({ type: 'poof', x: tx(i) + 0.5, y: ty(i) + 0.5, t: 0 });
-    const nh = spawnHouse(chooseHouseColor(), null);
-    if (nh) G.fx.push({ type: 'poof', x: tx(nh.i) + 0.5, y: ty(nh.i) + 0.5, t: 0 });
+    const lock = LOCK_BASE + LOCK_STEP * (e.trips - 1);
+    G.trips.push({ e, left: TRIP_RESET + lock, lock, lockMax: lock });
+    G.tripCD = CASCADE_GAP;
+    G.trips_total++;
+    G.chain = G.time - G.chainT < 4 ? G.chain + 1 : 1;
+    G.chainT = G.time;
+    G.longestChain = Math.max(G.longestChain, G.chain);
+    G.fx.push({ type: 'spark', x: mx, y: my, t: 0 });
     graphChanged();
+    solveFlow();
+    G.fver = G.gver;
+    sfx(G.chain >= 2 ? 'cascade' : 'trip');
+    if (G.chain === 3) toast('Cascade! Power keeps moving onto cables that can’t take it.');
+    else if (!mechTip('trip', `A cable carried too much for too long and its breaker tripped. Its power moved straight onto the other cables, which can trip too. The breaker is locked for ${LOCK_BASE} seconds, then you can tap the gap to reset it. Each time the same cable trips, the lock lasts longer, and a third trip burns it out.`)) {
+      if (G.chain < 2) toast(e.trips > 1 ? `That cable tripped again. Locked for ${lock} seconds. One more trip and it burns out.` : 'A cable tripped. Tap the gap to reset it once the lock ends.');
+    }
   }
 
-  // Visitors with no car on the way, plus those whose car is stuck in a jam.
-  const waitingAt = (d) => Math.max(0, d.pins - d.assigned + (d.late || 0));
-  // 0 when calm. Starts once 3 visitors are waiting, then climbs with the
-  // timer once it's past the limit. Drives both the warning pulse and the sound.
-  const urgencyOf = (d) => {
-    const w = waitingAt(d);
-    return w > PIN_LIMIT ? 0.4 + 0.6 * d.overflow : w > 2 ? (0.3 * (w - 2)) / (PIN_LIMIT - 2) : 0;
-  };
-  const pulsePeriod = (u) => 1.4 - 0.95 * u;
+  // A reset by hand only works once the lockout is over.
+  function resetTrip(t) {
+    if (t.lock > 0) return false;
+    restoreTrip(t);
+    return true;
+  }
 
+  function restoreTrip(t, quiet) {
+    G.trips = G.trips.filter((x) => x !== t);
+    const e = t.e;
+    if (G.edges.has(ekey(e.a, e.b))) return;
+    e.heat = 0;
+    linkEdge(e);
+    graphChanged();
+    if (!quiet) sfx('reset');
+  }
+
+  // ---------------------------------------------------------------- simulation
   function step(dt) {
     G.time += dt;
+    G.dayT += dt;
+    updateWind(dt);
+    for (const g of G.gens) if (g.type === 'wind') g.ang += dt * G.wind * 7;
+    G.solveT -= dt;
+    if (G.solveT <= 0 || G.fver !== G.gver) { solveFlow(); G.solveT = SOLVE_EVERY; G.fver = G.gver; }
+    for (const g of G.gens) if (g.type === 'battery') g.soc = clamp(g.soc - g.rate * dt, 0, GEN.battery.store);
 
-    for (const d of G.dests) {
-      d.pinT -= dt;
-      if (d.pinT <= 0) {
-        d.pins++;
-        d.pinT = pinInterval(d) * rnd(0.7, 1.3);
-      }
-      // Only visitors with no car on the way count towards the timer, so
-      // what fails you is cars being stuck or too few houses, not distance.
-      if (waitingAt(d) > PIN_LIMIT) d.overflow += OVER_FILL * dt;
-      else d.overflow = Math.max(0, d.overflow - OVER_DRAIN * dt);
-      if (d.overflow >= 1) { gameOver(d); return; }
+    let delivered = 0;
+    for (const t of G.towns) {
+      delivered += t.draw;
+      t.lit += (t.served - t.lit) * Math.min(1, dt * 3);
+      const graced = G.time - t.born < GRACE;
+      if (t.served < 0.995 && !graced) t.dark += DARK_FILL * (1 - t.served) * dt;
+      else t.dark = Math.max(0, t.dark - DARK_DRAIN * dt);
+      if (t.dark >= 1) { gameOver(t); return; }
     }
+    G.delivered = delivered;
+    G.score += (delivered * dt * 24) / DAY_LEN;
     if (!G.targetHit && !modal && G.score >= G.map.target) {
       G.targetHit = true;
       onTargetReached();
       return;
     }
 
-    G.nextHouse -= dt;
-    if (G.nextHouse <= 0) {
-      if (!spawnHouse(chooseHouseColor(), null) && Math.random() < 0.35) churnHouse();
-      G.nextHouse = Math.max(3.4, 6.5 - 0.35 * (G.week - 1)) * rnd(0.75, 1.25);
-    }
-    updateRush(dt);
-    updateTrips(dt);
-    updateGens(dt);
-    // a heads-up shortly before sunset, when unprotected solar is feeding a town
-    if (dayPhase() > 0.68 && dayPhase() < 0.75 && G.duskWarn !== G.week) {
-      const exposed = G.houses.filter((h) => h.type === 'solar' && !h.battery && G.adj[h.i].size > 0).length;
-      if (exposed) { G.duskWarn = G.week; toast(`Sunset soon. ${exposed} solar ${exposed === 1 ? 'generator stops' : 'generators stop'} until morning.`); }
-    }
-    const sun = sunUp();
-    if (G.lastSun !== undefined && sun !== G.lastSun && G.houses.some((h) => h.type === 'solar')) sfx(sun ? 'dawn' : 'dusk');
-    G.lastSun = sun;
-    if (!mechSeen.solar && G.houses.some((h) => h.type === 'solar')) mechTip('solar', 'This is a solar generator. It only works in daylight. At night it goes dim and sends nothing. Coal works day and night, and a battery keeps solar running overnight.');
-    if (!mechSeen.wind && G.houses.some((h) => h.type === 'wind')) mechTip('wind', 'This is a wind generator. It stops when the wind drops. Batteries keep solar and wind generators running.');
-    if (!mechSeen.day && dayPhase() > 0.62 && dayPhase() < 0.75) mechTip('day', 'Evening is coming. Demand is highest in the evening and lowest at night. The bar at the top shows the time of day.');
-    G.nextDest -= dt;
-    if (G.nextDest <= 0) {
-      spawnNewDest();
-      G.nextDest = rnd(50, 65);
+    updateHeat(dt);
+    for (const t of G.trips) { t.left -= dt; t.lock = Math.max(0, (t.lock || 0) - dt); }
+    for (const t of G.trips.filter((x) => x.left <= 0)) restoreTrip(t);
+    for (const sc of G.scorch) sc.left -= dt;
+    if (G.scorch.length) G.scorch = G.scorch.filter((sc) => sc.left > 0);
+    if (G.day >= 2 && G.losses > 0.12 * (G.delivered + G.losses) && G.losses > 1.5) {
+      mechTip('loss', 'Busy cables waste power as heat. The fuller and longer a cable is, the more it loses, and the grid has to make extra to cover it. Adding strands, or building closer to towns, cuts the waste. Tap the gauge to see how much is lost.');
     }
 
-    G.dispatchT -= dt;
-    if (G.dispatchT <= 0) { dispatch(); G.dispatchT = 0.25; }
-
-    for (const c of G.cars) {
-      c.prevT = c.t;
-      c.prevDk = c.dk;
-      updateCar(c, dt);
+    G.nextTown -= dt;
+    if (G.nextTown <= 0) {
+      spawnTown(false);
+      G.nextTown = Math.max(11, 30 - 2 * (G.day - 1)) * rnd(0.8, 1.2);
     }
-    updateJams(dt);
-    if (G.cars.some((c) => c.state === 'gone')) G.cars = G.cars.filter((c) => c.state !== 'gone');
 
     for (const f of G.fx) f.t += dt;
     G.fx = G.fx.filter((f) => f.t < 0.8);
 
-    G.weekT += dt;
-    if (G.weekT >= WEEK_LEN) {
-      G.weekT -= WEEK_LEN;
-      G.week++;
-      G.res.roads += 15;
-      expandBounds();
-      showUpgrade();
+    const p = dayPhase();
+    const sunNow = sun() > 0;
+    if (G.lastSun !== undefined && sunNow !== G.lastSun && G.gens.some((g) => g.type === 'solar')) sfx(sunNow ? 'dawn' : 'dusk');
+    G.lastSun = sunNow;
+    if (p > 0.68 && p < 0.75 && G.duskWarn !== G.day) {
+      const n = G.gens.filter((g) => g.type === 'solar' && G.adj[g.i].size).length;
+      if (n) { G.duskWarn = G.day; toast(`Sunset soon. ${n} solar ${n === 1 ? 'farm stops' : 'farms stop'} just as the evening peak arrives.`); }
+    }
+    if (p > 0.74 && p < 0.8) mechTip('evening', 'Evening peak. Towns need the most power now, and solar has stopped for the night. Batteries charged during the day help here.');
+
+    if (G.dayT >= DAY_LEN) {
+      G.dayT -= DAY_LEN;
+      G.day++;
+      newDay();
     }
 
     G.saveT += dt;
     if (G.saveT > 15) { G.saveT = 0; save(); }
   }
 
+  function deliveries() {
+    const d = G.day, m = G.map, out = [];
+    const n = 2 + Math.floor((d - 1) / 4);
+    for (let k = 0; k < n; k++) {
+      const opts = [['coal', Math.max(0.12, 0.75 - 0.09 * (d - 1))]];
+      if (d >= m.solarDay) opts.push(['solar', 0.5]);
+      if (d >= m.windDay) opts.push(['wind', 0.45]);
+      let r = Math.random() * opts.reduce((s, o) => s + o[1], 0);
+      let got = opts[0][0];
+      for (const [type, w] of opts) { r -= w; if (r <= 0) { got = type; break; } }
+      out.push(got);
+    }
+    if (d > m.solarDay && d % 2 === 0) out.push('battery');
+    return out;
+  }
+
+  function newDay() {
+    G.res.cable += DAILY_CABLE;
+    const cards = deliveries();
+    for (const k of cards) G.res[k]++;
+    expandBounds();
+    showUpgrade(cards);
+  }
+
   // ---------------------------------------------------------------- progress
   function getProgress() {
     let p = null;
     try { p = JSON.parse(localStorage.getItem(PROGRESS_KEY) || 'null'); } catch (e) { p = null; }
-    if (!p) {
-      p = { unlocked: 1, best: {} };
-      // carry over a best score from before maps existed
-      let old = 0;
-      try { old = +(localStorage.getItem(BEST_KEY) || 0); } catch (e) { /* storage unavailable */ }
-      if (old) {
-        p.best.millbrook = old;
-        if (old >= MAPS[0].target) p.unlocked = 2;
-      }
-    }
-    return p;
+    return p || { unlocked: 1, best: {} };
   }
   function setProgress(p) {
     try { localStorage.setItem(PROGRESS_KEY, JSON.stringify(p)); } catch (e) { /* storage unavailable */ }
@@ -1448,53 +947,68 @@
       return;
     }
     $('#tgTitle').textContent = `${next.name} unlocked`;
-    $('#tgText').textContent = `You made ${fmt(G.map.target)} MW in ${G.map.name}. ${next.name} is next. ${next.blurb}`;
+    $('#tgText').textContent = `You delivered ${fmt(G.map.target)} MWh in ${G.map.name}. ${next.name} is next. ${next.blurb}`;
     const go = $('#btnTgNext');
     go.textContent = `Play ${next.name}`;
     go.onclick = () => { save(); closeScreen(); startNew(next); };
     openScreen('sTarget');
   }
 
-  function gameOver(d) {
+  function gameOver(t) {
     G.over = true;
     const p = getProgress();
     const prev = p.best[G.map.id] || 0;
-    p.best[G.map.id] = Math.max(prev, G.score);
+    const score = Math.floor(G.score);
+    p.best[G.map.id] = Math.max(prev, score);
     setProgress(p);
     try { localStorage.removeItem(SAVE_KEY); } catch (e) { /* storage unavailable */ }
-    G.overDest = d;
-    // centre on the problem
+    G.overTown = t;
     user.zoom = 1; user.px = 0; user.py = 0;
     const game = G;
+    sfx('cascade');
     setTimeout(() => {
-      if (G !== game) return; // a new game started in the meantime
-      $('#overWhy').textContent = `The ${COLORS[d.color].name} town in ${game.map.name} went without power for too long.`;
-      $('#overScore').textContent = game.score;
-      $('#overSub').textContent = `MW in ${game.week} ${game.week === 1 ? 'day' : 'days'}`;
-      $('#overBest').textContent = !prev ? '' : game.score > prev ? `New best for ${game.map.name}.` : `Best in ${game.map.name}: ${prev} MW`;
+      if (G !== game) return;
+      $('#overWhy').textContent = t.grid < 0
+        ? `A town in ${game.map.name} was never connected, and its lights went out.`
+        : `A town in ${game.map.name} went without enough power for too long, and its lights went out.`;
+      $('#overScore').textContent = fmt(score);
+      $('#overSub').textContent = `MWh delivered in ${game.day} ${game.day === 1 ? 'day' : 'days'}`;
+      $('#overBest').textContent = !prev ? '' : score > prev ? `New best for ${game.map.name}.` : `Best in ${game.map.name}: ${fmt(prev)} MWh`;
       openScreen('sOver');
     }, 1400);
   }
 
   // ---------------------------------------------------------------- upgrades
+  const ICON = {
+    cable: '<svg viewBox="0 0 48 48" fill="none" stroke-linecap="round"><path d="M6 36C14 36 16 12 24 12s10 24 18 24" stroke="#7fb0ff" stroke-width="3"/><path d="M6 31C14 31 16 7 24 7s10 24 18 24" stroke="#7fb0ff" stroke-width="3" opacity=".6"/></svg>',
+    sea: '<svg viewBox="0 0 48 48" fill="none" stroke-linecap="round"><path d="M4 30c4-3 8-3 12 0s8 3 12 0 8-3 12 0" stroke="#2f7fd1" stroke-width="4"/><path d="M6 22h36" stroke="#7fb0ff" stroke-width="3"/><circle cx="6" cy="22" r="3" fill="#7fb0ff"/><circle cx="42" cy="22" r="3" fill="#7fb0ff"/></svg>',
+    under: '<svg viewBox="0 0 48 48" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M3 38 18 12l7 10 5-6 15 22z" fill="#33405f"/><path d="M4 32h40" stroke="#7fb0ff" stroke-width="3" stroke-dasharray="4 4"/></svg>',
+    link: '<svg viewBox="0 0 48 48" fill="none" stroke-linecap="round"><path d="M6 34Q24 4 42 34" stroke="#ffd45e" stroke-width="4"/><circle cx="6" cy="34" r="4" fill="#ffd45e"/><circle cx="42" cy="34" r="4" fill="#ffd45e"/></svg>',
+    guard: '<svg viewBox="0 0 48 48" fill="none" stroke-linejoin="round"><path d="M24 6 39 12v11c0 9-6 16-15 19-9-3-15-10-15-19V12z" fill="#2fe0c0" opacity=".25" stroke="#2fe0c0" stroke-width="3"/><path d="m26 14-6 10h5l-3 9 8-12h-5z" fill="#2fe0c0"/></svg>',
+    battery: '<svg viewBox="0 0 48 48" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="14" width="30" height="20" rx="4" stroke="#2fe0c0" stroke-width="3"/><rect x="12" y="18" width="14" height="12" rx="2" fill="#2fe0c0"/><rect x="38" y="20" width="4" height="8" rx="1.5" fill="#2fe0c0"/></svg>',
+    coal: '<svg viewBox="0 0 48 48" fill="none" stroke-linejoin="round"><rect x="8" y="22" width="32" height="18" rx="3" fill="#56658a"/><rect x="28" y="8" width="7" height="16" fill="#56658a"/><circle cx="34" cy="6" r="3" fill="#8b93a7"/><rect x="13" y="28" width="5" height="5" fill="#ffd76a"/><rect x="22" y="28" width="5" height="5" fill="#ffd76a"/></svg>',
+    solar: '<svg viewBox="0 0 48 48" fill="none"><rect x="8" y="12" width="32" height="24" rx="3" fill="#1f61a8"/><path d="M24 12v24M8 24h32" stroke="#7fb0ff" stroke-width="2"/><circle cx="38" cy="10" r="5" fill="#ffc83d"/></svg>',
+    wind: '<svg viewBox="0 0 48 48" fill="none" stroke-linecap="round"><path d="M24 24v18" stroke="#c9d6ee" stroke-width="3"/><path d="M24 24 24 6M24 24 39 32M24 24 9 32" stroke="#c9d6ee" stroke-width="4"/><circle cx="24" cy="24" r="3" fill="#fff"/></svg>',
+  };
   const UPGRADES = {
-    bridges: { label: 'Sea cable', note: 'Cross water', n: 1, icon: '<svg viewBox="0 0 48 48" fill="none" stroke-linecap="round"><path d="M4 34h40" stroke="#7ec0ff" stroke-width="8"/><path d="M6 24c6-8 30-8 36 0" stroke="#2f7fd1" stroke-width="4"/><path d="M6 24h36" stroke="#56658a" stroke-width="6"/></svg>' },
-    rounds: { label: '2 transformers', note: 'Busy joins flow better, and never trip', n: 2, icon: '<svg viewBox="0 0 48 48" fill="none" stroke-linecap="round"><path d="M4 24h8M36 24h8" stroke="#56658a" stroke-width="5"/><circle cx="19" cy="24" r="10" stroke="#ffb400" stroke-width="4"/><circle cx="29" cy="24" r="10" stroke="#ffb400" stroke-width="4"/></svg>' },
-    motors: { label: 'Express line', note: 'Fast underground link', n: 1, icon: '<svg viewBox="0 0 48 48" fill="none" stroke-linecap="round"><path d="M6 34h36" stroke="#56658a" stroke-width="3" stroke-dasharray="4 4" opacity=".55"/><path d="M4 26a8 8 0 0 1 16 0z" fill="#9aa9c9"/><path d="M7 26a5 5 0 0 1 10 0z" fill="#56658a"/><path d="M28 26a8 8 0 0 1 16 0z" fill="#9aa9c9"/><path d="M31 26a5 5 0 0 1 10 0z" fill="#56658a"/><path d="M2 26h44" stroke="#56658a" stroke-width="3"/></svg>' },
-    roads: { label: '20 cable tiles', note: 'More cable to lay', n: 20, icon: '<svg viewBox="0 0 48 48" fill="none" stroke="#56658a" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"><path d="M8 40V24h16V8h16"/></svg>' },
-    tunnels: { label: 'Underground', note: 'Go through a hill', n: 1, icon: '<svg viewBox="0 0 48 48" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M3 40 18 12l7 10 5-6 15 24z" fill="#9aa9c9"/><path d="M15 40v-6a9 9 0 0 1 18 0v6z" fill="#56658a"/><path d="M3 41h42" stroke="#56658a" stroke-width="4"/></svg>' },
-    entrances: { label: 'Extra substation', note: 'A second way in for a busy town', n: 1, icon: '<svg viewBox="0 0 48 48" fill="none" stroke-linejoin="round"><rect x="14" y="10" width="20" height="20" rx="4" fill="#ff6a4d"/><rect x="6" y="32" width="10" height="10" rx="2" fill="#a8321c"/><rect x="32" y="32" width="10" height="10" rx="2" fill="#a8321c"/></svg>' },
-    dozers: { label: 'Excavator', note: 'Clear 3 hill or water tiles', n: 3, icon: '<svg viewBox="0 0 48 48" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M6 38 18 16l8 12 4-5 12 15z" fill="#9aa9c9"/><rect x="18" y="26" width="18" height="10" rx="2" fill="#e9a93a"/><path d="M14 22v16" stroke="#56658a" stroke-width="4"/><circle cx="22" cy="40" r="3" fill="#0b0f18"/><circle cx="32" cy="40" r="3" fill="#0b0f18"/></svg>' },
-    batteries: { label: '2 batteries', note: 'Keep a solar or wind generator running', n: 2, icon: '<svg viewBox="0 0 48 48" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="14" width="30" height="20" rx="4" fill="#ffc83d" stroke="#a67a0c" stroke-width="3"/><rect x="38" y="20" width="4" height="8" rx="1.5" fill="#a67a0c"/><path d="M25 17l-6 8h5l-2 6 7-9h-5z" fill="#fff"/></svg>' },
-    moves: { label: 'Move a generator', note: 'Move 2 generators somewhere better', n: 2, icon: '<svg viewBox="0 0 48 48" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="26" width="14" height="14" rx="3" fill="#ff6a4d" opacity=".35"/><rect x="24" y="8" width="18" height="18" rx="4" fill="#ff6a4d"/><path d="M34 11l-6 8h5l-2 6 7-9h-5z" fill="#a8321c"/><path d="M16 32c3-8 8-12 12-12" stroke="#56658a" stroke-width="3"/></svg>' },
+    cable: { label: '20 cable', note: 'More to lay, or to re-lay busy lines', n: 20 },
+    sea: { label: 'Sea cable', note: 'Cross water', n: 1 },
+    under: { label: 'Underground', note: 'Go through a hill', n: 1 },
+    link: { label: 'Interconnector', note: `A strong link up to ${LINK_RANGE} tiles long, over anything`, n: 1 },
+    guard: { label: '2 surge guards', note: 'Cables joined at a guard never trip', n: 2 },
+    battery: { label: 'Battery', note: 'Stores spare power for later', n: 1 },
+    coal: { label: 'Coal plant', note: 'Steady power, day and night', n: 1 },
   };
 
   function upgradeKeys() {
-    return Object.keys(UPGRADES).filter((k) => (k !== 'tunnels' || G.map.hills > 0) && (k !== 'batteries' || G.houses.some((h) => h.type && h.type !== 'coal')));
+    return Object.keys(UPGRADES).filter((k) =>
+      (k !== 'sea' || G.water.some((v) => v)) &&
+      (k !== 'under' || G.map.hills > 0) &&
+      (k !== 'battery' || G.day > G.map.solarDay));
   }
 
-  // Three different choices: always one of road tiles, a bridge or a tunnel,
-  // always a roundabout or a motorway, then one more from anything left.
+  // Three different choices: always one way to build further, one way to
+  // protect or strengthen the grid, then one more from anything left.
   function pickUpgrades() {
     const keys = upgradeKeys();
     const out = [];
@@ -1502,22 +1016,29 @@
       const pool = list.filter((k) => keys.includes(k) && !out.includes(k));
       if (pool.length) out.push(pick(pool));
     };
-    take(['roads', 'bridges', 'tunnels']);
-    take(['rounds', 'motors']);
+    take(['cable', 'sea', 'under']);
+    take(['link', 'guard']);
     take(keys);
     return out;
   }
 
-  function showUpgrade() {
-    $('#upTitle').textContent = `Day ${G.week}`;
-    $('#upText').textContent = 'A new day. You get 15 more cable tiles. Pick one upgrade.';
+  function listCards(cards) {
+    const counts = {};
+    for (const c of cards) counts[c] = (counts[c] || 0) + 1;
+    const parts = Object.entries(counts).map(([k, n]) => `${n} ${n === 1 ? GEN[k].name : GEN[k].plural}`);
+    return parts.length > 1 ? `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}` : parts[0] || '';
+  }
+
+  function showUpgrade(cards) {
+    $('#upTitle').textContent = `Day ${G.day}`;
+    $('#upText').textContent = `A new day. You get ${DAILY_CABLE} more cable${cards && cards.length ? ` and ${listCards(cards)}` : ''}. Pick one upgrade.`;
     const box = $('#choices');
     box.innerHTML = '';
     for (const k of pickUpgrades()) {
       const u = UPGRADES[k];
       const btn = document.createElement('button');
       btn.className = 'choice';
-      btn.innerHTML = `${u.icon}<span>${u.label}</span><small>${u.note}</small>`;
+      btn.innerHTML = `${ICON[k]}<span>${u.label}</span><small>${u.note}</small>`;
       btn.addEventListener('click', () => {
         G.res[k] += u.n;
         G.owned[k] = true;
@@ -1525,32 +1046,36 @@
         closeScreen();
         measure();
         save();
+        if (k === 'link') mechTip('link', `Interconnector: tap the Interconnector tool, then tap two points up to ${LINK_RANGE} tiles apart. It jumps over anything and carries ${LINK_CAP} MW.`);
+        if (k === 'guard') mechTip('guard', 'Surge guard: tap a cable joint to protect it. Cables joined there never trip, so a cascade stops there.');
       });
       box.appendChild(btn);
     }
     openScreen('sUpgrade');
+    if (cards && cards.includes('solar')) mechTip('solar', 'You have a solar farm. It only works in daylight, and the evening peak comes just after sunset. A battery stores spare daytime power for the evening.', true);
+    else if (cards && cards.includes('wind')) mechTip('wind', 'You have a wind farm. It makes power when the wind blows. Wind farms next to water make more.', true);
+    else if (cards && cards.includes('battery')) mechTip('battery', 'You have a battery. Put it on a grid and it charges from spare power, then gives it back when the grid runs short.', true);
   }
 
   // ---------------------------------------------------------------- save / load
   function save() {
     if (!G || G.over || G.demo) return;
-    const roads = [], water = [], mount = [], rounds = [], deco = [], overpass = [];
+    const water = [], mount = [], deco = [], guard = [];
     for (let i = 0; i < G.N; i++) {
-      if (G.road[i]) roads.push(i);
       if (G.water[i]) water.push(i);
       if (G.mount[i]) mount.push(i);
-      if (G.round[i]) rounds.push(i);
-      if (G.overpass[i]) overpass.push(i);
       if (G.deco[i]) deco.push(i, G.deco[i]);
+      if (G.guard[i]) guard.push(i);
     }
+    const tripOf = new Map(G.trips.map((t) => [t.e, t]));
     const data = {
-      v: 3, map: G.map.id, targetHit: G.targetHit, W: G.W, H: G.H, roads, water, mount, rounds, overpass, deco,
-      edges: [...G.edges.values(), ...G.trips.map((t) => t.e)].map((e) => [e.a, e.b, e.type === 'motor' ? 1 : 0, e.from === undefined ? -1 : e.from]),
-      houses: G.houses.map((h) => [h.i, h.color, h.bus ? 1 : 0, h.type || 'coal', h.battery ? 1 : 0]),
-      dests: G.dests.map((d) => [d.x, d.y, d.ports, d.color, d.pins, d.overflow, d.pinT, d.bigPark ? 1 : 0]),
-      res: G.res, owned: G.owned, time: G.time, week: G.week, weekT: G.weekT, score: G.score,
-      bounds: G.bounds, colorsUsed: G.colorsUsed, nextHouse: G.nextHouse, nextDest: G.nextDest,
-      speed: G.speed,
+      v: 4, map: G.map.id, W: G.W, H: G.H, water, mount, deco, guard, targetHit: G.targetHit,
+      edges: allEdges().map((e) => { const t = tripOf.get(e); return [e.a, e.b, e.kind, e.lvl, e.run, t ? t.left : -1, t ? t.lock : 0, e.trips || 0]; }),
+      runs: [...G.runs],
+      towns: G.towns.map((t) => [t.i, t.bornDay, t.dark]),
+      gens: G.gens.map((g) => [g.type, g.i, g.soc]),
+      res: G.res, owned: G.owned, time: G.time, day: G.day, dayT: G.dayT, score: G.score,
+      bounds: G.bounds, nextTown: G.nextTown, wind: G.wind, windTarget: G.windTarget, speed: G.speed, nextId: G.nextId,
     };
     try { localStorage.setItem(SAVE_KEY, JSON.stringify(data)); } catch (e) { /* storage unavailable */ }
   }
@@ -1558,46 +1083,88 @@
   function load() {
     let data;
     try { data = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null'); } catch (e) { data = null; }
-    if (!data || ![1, 2, 3].includes(data.v)) return false;
+    if (!data || data.v !== 4) return false;
     G = blankState(data.W, data.H);
     G.map = MAPS.find((m) => m.id === data.map) || MAPS[0];
-    G.targetHit = !!data.targetHit;
     for (const i of data.water) G.water[i] = 1;
-    for (const i of data.mount || []) G.mount[i] = 1;
-    for (const i of data.roads) G.road[i] = 1;
-    for (const i of data.rounds) G.round[i] = 1;
-    for (const i of data.overpass || []) G.overpass[i] = 1;
+    for (const i of data.mount) G.mount[i] = 1;
     for (let k = 0; k < data.deco.length; k += 2) G.deco[data.deco[k]] = data.deco[k + 1];
-    for (const [a, b, m, from] of data.edges) {
-      const e = addEdge(a, b, m ? 'motor' : 'road');
-      if (from !== undefined && from >= 0) e.from = from;
-    }
-    for (const [x, y, ports, color, pins, overflow, pinT, bigPark] of data.dests) {
-      const list = Array.isArray(ports) ? ports : [ports];
-      const d = { id: G.nextId++, color, x, y, ports: list, pins, assigned: 0, overflow, pinT, born: -10, bigPark: !!bigPark };
-      for (const c of [idx(x, y), idx(x + 1, y), idx(x, y + 1), idx(x + 1, y + 1)]) G.occ[c] = { kind: 'dest', d };
-      for (const p of list) G.occ[p] = { kind: 'port', d };
-      G.dests.push(d);
-    }
-    for (const [i, color, bus, type, battery] of data.houses) {
-      const h = { id: G.nextId++, color, i, born: -10, bus: !!bus, type: type || 'coal', battery: !!battery };
-      G.occ[i] = { kind: 'house', h };
-      G.houses.push(h);
-      if (h.bus) addCar(h, true);
-      else for (let k = 0; k < CARS_PER_HOUSE; k++) addCar(h);
-    }
+    for (const i of data.guard) G.guard[i] = 1;
+    Object.assign(G, {
+      targetHit: !!data.targetHit, time: data.time, day: data.day, dayT: data.dayT, score: data.score, bounds: data.bounds,
+      nextTown: data.nextTown, wind: data.wind, windTarget: data.windTarget, speed: data.speed || 1, nextId: data.nextId,
+    });
     Object.assign(G.res, data.res);
     G.owned = data.owned || {};
+    for (const [a, b, kind, lvl, run, left, lock, trips] of data.edges) {
+      const e = { a, b, kind, lvl, run, len: edgeLen(a, b), flow: 0, load: 0, heat: 0 };
+      if (trips) { e.trips = trips; e.lastTrip = data.time; }
+      if (left >= 0) G.trips.push({ e, left, lock: lock || 0, lockMax: Math.max(1, lock || 0) }); else linkEdge(e);
+    }
+    G.runs = new Map(data.runs);
+    for (const [i, bornDay, dark] of data.towns) {
+      const t = { id: G.nextId++, i, bornDay, born: -99, need: 0, served: 0, draw: 0, lit: 1, dark, grid: -1 };
+      G.occ[i] = { kind: 'town', t };
+      G.towns.push(t);
+    }
+    for (const [type, i, soc] of data.gens) {
+      const g = { id: G.nextId++, type, i, born: -99, out: 0, rate: 0, ang: 0, soc, coast: coastal(i) };
+      G.occ[i] = { kind: 'gen', g };
+      G.gens.push(g);
+    }
     undoStack = [];
     pendingSnap = null;
-    Object.assign(G, {
-      time: data.time, week: data.week, weekT: data.weekT, score: data.score, bounds: data.bounds,
-      colorsUsed: data.colorsUsed, nextHouse: data.nextHouse, nextDest: data.nextDest, speed: data.speed || 1,
-    });
     user.zoom = 1; user.px = 0; user.py = 0;
     camSnap = true;
     graphChanged();
     return true;
+  }
+
+  // ---------------------------------------------------------------- undo
+  // Covers cables, power stations and guards. Each undo puts them back and
+  // returns what they cost.
+  let undoStack = [];
+  let pendingSnap = null;
+  function snapNet() {
+    return {
+      uver: G.uver,
+      edges: allEdges().map((e) => [e, e.lvl]),
+      runs: [...G.runs], res: { ...G.res }, gens: G.gens.slice(), guard: G.guard.slice(),
+    };
+  }
+  function commitUndo() {
+    if (pendingSnap && pendingSnap.uver !== G.uver) {
+      undoStack.push(pendingSnap);
+      if (undoStack.length > 30) undoStack.shift();
+    }
+    pendingSnap = null;
+    hudCache = '';
+  }
+  function undo() {
+    commitUndo();
+    const s = undoStack.pop();
+    if (!s) return;
+    // Undo puts cables back but never resets a breaker: anything tripped now stays tripped.
+    const tripped = new Map(G.trips.map((t) => [t.e, t]));
+    for (const e of [...G.edges.values()]) removeEdge(e);
+    G.trips = [];
+    for (const [e, lvl] of s.edges) {
+      e.lvl = lvl;
+      if (tripped.has(e)) G.trips.push(tripped.get(e)); else { e.heat = 0; linkEdge(e); }
+    }
+    G.runs = new Map(s.runs);
+    Object.assign(G.res, s.res);
+    for (const g of G.gens) if (G.occ[g.i] && G.occ[g.i].g === g) G.occ[g.i] = null;
+    G.gens = [];
+    for (const g of s.gens) {
+      if (G.occ[g.i]) { G.res[g.type]++; continue; }
+      G.occ[g.i] = { kind: 'gen', g };
+      G.gens.push(g);
+    }
+    G.guard.set(s.guard);
+    G.uver++;
+    graphChanged();
+    hudCache = '';
   }
 
   // ---------------------------------------------------------------- camera
@@ -1614,7 +1181,7 @@
     const b = baseCam();
     const B = G.bounds;
     const s = b.s * user.zoom;
-    // Only allow panning as far as zoom makes room for, so the town stays on screen.
+    // Only allow panning as far as zoom makes room for, so the map stays on screen.
     const slack = 1 - 1 / user.zoom;
     const hx = ((B.x1 - B.x0 + 1.6) / 2) * slack;
     const hy = ((B.y1 - B.y0 + 1.6) / 2) * slack;
@@ -1643,6 +1210,7 @@
   let action = null;
   let pinch = null;
   let gestureLock = false;
+  const EDIT_TOOLS = new Set(['cable', 'erase', 'coal', 'solar', 'wind', 'battery', 'link', 'guard']);
 
   function tileAtWorld(wx, wy) {
     const x = Math.floor(wx), y = Math.floor(wy);
@@ -1660,34 +1228,52 @@
     return idx(fx + sxv, fy + syv);
   }
 
-  function lastFeedback(res) {
-    if (res === 'roads') { toast('Out of cable. Erase some, or wait for the next day.'); flashCount('road'); }
-    else if (res === 'bridges') { toast('You need a sea cable to cross water.'); flashCount('bridge'); }
-    else if (res === 'tunnels') { toast(G.map.hills ? 'You need an underground cable to go through a hill.' : 'Hills block cables.'); flashCount('tunnel'); }
-    else if (res === 'long') toast(`That's too long. Sea cables and underground cables can be up to ${MAX_SPAN} tiles.`);
+  function feedback(res, trip) {
+    const msg = {
+      locked: trip ? `That breaker is locked for ${Math.ceil(trip.lock)} more ${Math.ceil(trip.lock) === 1 ? 'second' : 'seconds'}.` : 'That breaker is still locked.',
+      cable: 'Out of cable. Erase some, or wait for the next day.',
+      sea: 'You need a sea cable to cross water.',
+      under: G.map.hills ? 'You need an underground cable to go through a hill.' : 'Hills block cables.',
+      long: `That's too long. Sea and underground cables can be up to ${MAX_SPAN} tiles.`,
+      cross: 'Cables can’t cross diagonally in the middle of a square.',
+      max: `That cable already has ${MAX_STRANDS} strands, the most it can take.`,
+      'coal-near': `Coal plants have to be more than ${COAL_CLEAR} tiles from a town.`,
+      occ: 'Something is already there.',
+      rough: 'Build on open land.',
+      bounds: 'That land isn’t open yet. The map grows each day.',
+      far: `Interconnectors can be up to ${LINK_RANGE} tiles long.`,
+      short: 'Interconnectors are for longer jumps. Use cable for short ones.',
+      exists: 'Those two points are already joined.',
+      nocable: 'Tap a cable joint to put a surge guard on it.',
+      already: 'That joint already has a surge guard.',
+    }[res];
+    if (msg) toast(msg);
+    if (res === 'cable') flashCount('cable');
+    else if (res === 'sea' || res === 'under') flashCount(res);
   }
 
-  function roadMove(wx, wy, a) {
+  const canStart = (c) => c >= 0 && inBi(c) && !rough(c);
+
+  function cableMove(wx, wy, a) {
     const c = tileAtWorld(wx, wy);
     if (c < 0 || c === a.last) return;
     if (a.last < 0) {
-      if (kind(c) !== null && inB(tx(c), ty(c))) a.last = c;
+      if (canStart(c)) a.last = c;
       return;
     }
     const cx = tx(c) + 0.5, cy = ty(c) + 0.5;
     const near = Math.hypot(wx - cx, wy - cy) < 0.46;
-    const lx = tx(a.last), ly = ty(a.last);
-    const cheb = Math.max(Math.abs(tx(c) - lx), Math.abs(ty(c) - ly));
-    if (!near && cheb <= 1) return;
+    const cheb1 = cheb(c, a.last);
+    if (!near && cheb1 <= 1) return;
     let cur = a.last;
     let guard = 0;
     while (cur !== c && guard++ < 64) {
       const nx = stepToward(cur, c);
-      const r = tryConnect(cur, nx);
+      const r = tryConnect(cur, nx, a.st);
+      if (r === 'max') { if (!a.st.warned) { feedback(r); a.st.warned = true; } cur = nx; continue; }
       if (r !== 'ok') {
-        if (!a.warned) { lastFeedback(r); if (r !== 'bad' && r !== 'bounds') a.warned = true; }
-        // let the stroke restart from a valid tile under the finger
-        if (r === 'bad' && kind(nx) !== null) { cur = nx; continue; }
+        if (!a.st.warned && r !== 'bad') { feedback(r, a.st.lockedTrip); a.st.warned = true; }
+        if ((r === 'bad' || r === 'cross') && canStart(nx) && !(a.st.run && a.st.run.open)) { cur = nx; continue; }
         break;
       }
       cur = nx;
@@ -1704,41 +1290,95 @@
     a.last = c;
   }
 
-  let moveFrom = null;
+  function tappedTrip(c, wx, wy) {
+    let best = null, bd = 0.9;
+    for (const t of G.trips) {
+      const mx = (tx(t.e.a) + tx(t.e.b)) / 2 + 0.5, my = (ty(t.e.a) + ty(t.e.b)) / 2 + 0.5;
+      const d = Math.hypot(wx - mx, wy - my);
+      if (d < bd) { bd = d; best = t; }
+    }
+    if (best) return best;
+    return G.trips.find((t) => t.e.a === c || t.e.b === c) || null;
+  }
 
-  // Taps for the upgrade tools. Each returns to the road tool once used up.
-  function tapTool(t, c) {
-    const done = (key) => { if (G.res[key] <= 0) setTool('road'); };
-    if (t === 'entrance') { if (addEntrance(c)) done('entrances'); }
-    else if (t === 'dozer') { if (bulldoze(c)) done('dozers'); }
-    else if (t === 'battery') {
-      const o = G.occ[c];
-      if (!o || o.kind !== 'house') toast('Tap a generator to give it a battery.');
-      else if (o.h.type === 'coal' || !o.h.type) toast('Coal runs all the time. Give the battery to a solar or wind generator.');
-      else if (o.h.battery) toast('That generator already has a battery.');
-      else {
-        o.h.battery = true;
-        G.res.batteries--;
-        G.fx.push({ type: 'poof', x: tx(c) + 0.5, y: ty(c) + 0.5, t: 0 });
-        done('batteries');
-      }
+  function tapAt(a, c, wx, wy) {
+    const trip = tappedTrip(c, wx, wy);
+    if (trip && (a.tool === 'cable' || a.tool === 'erase')) {
+      if (a.tool === 'erase') { eraseEdge(trip.e); G.uver++; graphChanged(); return; }
+      if (resetTrip(trip)) toast(trip.e.trips > 1 ? `Breaker reset. It has tripped ${trip.e.trips} times; one more and it burns out.` : 'Breaker reset.');
+      else feedback('locked', trip);
+      return;
     }
-    else if (t === 'move') {
-      const o = G.occ[c];
-      if (!moveFrom) {
-        if (o && o.kind === 'house') { moveFrom = o.h; toast('Now tap where the generator should go.'); }
-        else toast('Tap the generator you want to move.');
-      } else if (o && o.kind === 'house') {
-        moveFrom = o.h === moveFrom ? null : o.h;
-      } else if (moveHouse(moveFrom, c)) {
-        moveFrom = null;
-        done('moves');
-      }
+    if (c < 0) return;
+    const o = G.occ[c];
+    if (a.tool === 'cable') {
+      if (o && o.kind === 'town' && !G.over) { openInspect(o.t); return; }
+      if (o && o.kind === 'gen') { toast(genInfo(o.g)); return; }
+      if (G.adj[c].size) toast(cableInfo(c));
+      return;
     }
+    if (a.tool === 'erase') {
+      if (o && o.kind === 'gen') { removeGen(o.g); toast(`${cap1(GEN[o.g.type].name)} removed. You can build it again somewhere else.`); }
+      else eraseAt(c);
+      return;
+    }
+    if (GEN[a.tool]) {
+      const r = placeGen(a.tool, c);
+      if (r !== 'ok') { feedback(r); return; }
+      if (G.res[a.tool] <= 0) setTool('cable');
+      return;
+    }
+    if (a.tool === 'link') {
+      if (linkStart < 0) {
+        if (!inBi(c) || rough(c)) { feedback('rough'); return; }
+        linkStart = c;
+        toast('Now tap the other end.');
+      } else if (c === linkStart) {
+        linkStart = -1;
+      } else {
+        const r = placeLink(linkStart, c);
+        if (r !== 'ok') { feedback(r); return; }
+        linkStart = -1;
+        setTool('cable');
+      }
+      return;
+    }
+    if (a.tool === 'guard') {
+      const r = placeGuard(c);
+      if (r !== 'ok') { feedback(r); return; }
+      if (G.res.guard <= 0) setTool('cable');
+    }
+  }
+
+  const cap1 = (s) => s[0].toUpperCase() + s.slice(1);
+  function genInfo(g) {
+    const name = cap1(GEN[g.type].name);
+    if (!G.adj[g.i].size) return `${name}. It has no cable yet.`;
+    if (g.type === 'battery') {
+      const pct = Math.round((g.soc / GEN.battery.store) * 100);
+      const doing = g.rate > 0.05 ? `giving ${mw(g.rate)} MW` : g.rate < -0.05 ? `charging at ${mw(-g.rate)} MW` : 'idle';
+      return `Battery, ${pct}% full, ${doing}.`;
+    }
+    let text = `${name}: making ${mw(g.out)} of ${mw(genMax(g))} MW.`;
+    if (g.type === 'solar' && sun() <= 0) text += ' The sun is down.';
+    if (g.type === 'wind') text += ` Wind is at ${Math.round(G.wind * 100)}%.${g.coast ? ' Next to water, so it makes more.' : ''}`;
+    if (g.type === 'coal' && g.out < avail(g) - 0.1) text += ' Running below full because the grid doesn’t need more.';
+    return text;
+  }
+  function cableInfo(c) {
+    let e = null;
+    for (const x of G.adj[c].values()) if (!e || x.load > e.load) e = x;
+    if (!e) return '';
+    if (e.kind === 'link') return `Interconnector: carrying ${mw(Math.abs(e.flow))} of ${LINK_CAP} MW.`;
+    const strands = `${e.lvl} ${e.lvl === 1 ? 'strand' : 'strands'}`;
+    const more = e.lvl < MAX_STRANDS ? ' Draw along it again to add a strand.' : '';
+    const loss = e.loss > 0.05 ? `, losing ${mw(e.loss)} MW as heat` : '';
+    return `Carrying ${mw(Math.abs(e.flow))} of ${capOf(e)} MW on ${strands}${loss}.${more}`;
   }
 
   function resetTouches() {
     pointers.clear();
+    if (action) endStroke(action.st);
     action = null;
     pinch = null;
     gestureLock = false;
@@ -1748,24 +1388,23 @@
     if (!G || modal) return;
     if (inspect) { closeInspect(); return; }
     const arrow = e.isPrimary && edgeArrows.find((a) => Math.hypot(a.x - e.clientX, a.y - e.clientY) < 26);
-    if (arrow) { lookAt(arrow.d); return; }
-    // A primary pointer means no other finger is down, so anything still
-    // tracked is stale (iOS can swallow a finger lift near the Home bar).
+    if (arrow) { lookAt(arrow.t); return; }
     if (e.isPrimary) resetTouches();
     try { canvas.setPointerCapture(e.pointerId); } catch (err) { /* not capturable */ }
     pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (pointers.size === 1 && !gestureLock) {
       const wx = wxOf(e.clientX), wy = wyOf(e.clientY);
       commitUndo();
-      if (UNDO_TOOLS.has(tool)) pendingSnap = snapNet();
-      action = { tool, sx: e.clientX, sy: e.clientY, moved: false, last: -1, warned: false };
-      if (tool === 'road') {
+      if (EDIT_TOOLS.has(tool)) pendingSnap = snapNet();
+      action = { tool, sx: e.clientX, sy: e.clientY, moved: false, last: -1, st: newStroke() };
+      if (tool === 'cable') {
         const c = tileAtWorld(wx, wy);
-        if (c >= 0 && kind(c) !== null && inB(tx(c), ty(c))) action.last = c;
+        if (canStart(c)) action.last = c;
       } else if (tool === 'erase') {
-        eraseMove(wx, wy, action);
+        action.startTile = tileAtWorld(wx, wy);
       }
     } else if (pointers.size === 2) {
+      if (action) endStroke(action.st);
       action = null;
       gestureLock = true;
       startPinch();
@@ -1780,9 +1419,7 @@
 
   function onMove(e) {
     if (!pointers.has(e.pointerId)) {
-      if (G && !modal && e.pointerType === 'mouse') {
-        hoverTile = tileAtWorld(wxOf(e.clientX), wyOf(e.clientY));
-      }
+      if (G && !modal && e.pointerType === 'mouse') hoverTile = tileAtWorld(wxOf(e.clientX), wyOf(e.clientY));
       return;
     }
     pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
@@ -1790,22 +1427,24 @@
       const [p1, p2] = [...pointers.values()];
       const mx = (p1.x + p2.x) / 2, my = (p1.y + p2.y) / 2;
       const d = Math.hypot(p1.x - p2.x, p1.y - p2.y);
-      user.zoom = clamp(pinch.z0 * d / pinch.d0, 1, 3.2);
+      user.zoom = clamp((pinch.z0 * d) / pinch.d0, 1, 3.2);
       const b = baseCam();
       const s = b.s * user.zoom;
-      const cx = pinch.wx - (mx - screenCenterX()) / s;
-      const cy = pinch.wy - (my - screenCenterY()) / s;
-      user.px = cx - b.x; user.py = cy - b.y;
+      user.px = pinch.wx - (mx - screenCenterX()) / s - b.x;
+      user.py = pinch.wy - (my - screenCenterY()) / s - b.y;
       camSnap = true;
       return;
     }
     if (!action) return;
-    if (Math.hypot(e.clientX - action.sx, e.clientY - action.sy) > 6) action.moved = true;
+    if (Math.hypot(e.clientX - action.sx, e.clientY - action.sy) > 6) {
+      if (!action.moved && action.tool === 'erase') { action.last = action.startTile; if (action.last >= 0) eraseAt(action.last); }
+      action.moved = true;
+    }
     const events = e.getCoalescedEvents ? e.getCoalescedEvents() : [e];
     for (const ev of (events.length ? events : [e])) {
       const wx = wxOf(ev.clientX), wy = wyOf(ev.clientY);
-      if (action.tool === 'road') roadMove(wx, wy, action);
-      else if (action.tool === 'erase') eraseMove(wx, wy, action);
+      if (action.tool === 'cable') cableMove(wx, wy, action);
+      else if (action.tool === 'erase' && action.moved) eraseMove(wx, wy, action);
     }
   }
 
@@ -1817,28 +1456,11 @@
     if (!action) return;
     const a = action;
     action = null;
-    setTimeout(commitUndo, 0); // after this lift's taps have been applied
+    endStroke(a.st);
+    setTimeout(commitUndo, 0);
     if (a.moved || e.type === 'pointercancel') return;
-    const c = tileAtWorld(wxOf(e.clientX), wyOf(e.clientY));
-    if (c < 0) return;
-    const tripped = G.trips.filter((t) => base(t.e.a) === c || base(t.e.b) === c);
-    if (tripped.length) { tripped.forEach(restoreTrip); sfx('reset'); toast('Breaker reset.'); return; }
-    if (a.tool === 'road' && destAt(c) && !G.over) { openInspect(destAt(c)); return; }
-    tapTool(a.tool, c);
-    if (a.tool === 'round') {
-      if (placeRoundabout(c) && G.res.rounds <= 0) setTool('road');
-    } else if (a.tool === 'motor') {
-      if (G.res.motors <= 0) { toast('No express lines left. You can pick more at the end of the day.'); return; }
-      if (motorStart < 0) {
-        const k = kind(c);
-        if ((k === 'road' || k === 'land') && !rough(c) && inB(tx(c), ty(c))) { motorStart = c; toast('Now tap where the underground cable should come out.'); }
-        else toast('Tap an empty tile or a cable to start the underground cable.');
-      } else if (c === motorStart) {
-        motorStart = -1;
-      } else if (inB(tx(c), ty(c))) {
-        if (placeMotorway(motorStart, c)) { motorStart = -1; setTool('road'); }
-      }
-    }
+    const wx = wxOf(e.clientX), wy = wyOf(e.clientY);
+    tapAt(a, tileAtWorld(wx, wy), wx, wy);
   }
 
   canvas.addEventListener('pointerdown', onDown);
@@ -1890,6 +1512,17 @@
     return 1 + Math.sin(t * Math.PI) * 0.25 - (1 - t) * (1 - t) * 0.9;
   }
 
+  const hexRgb = (h) => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
+  const COOL = hexRgb('#7fb0ff'), WARM = hexRgb('#ffc83d'), HOT = hexRgb(PAL.hot);
+  function loadRgb(L) {
+    const mix = (a, b, k) => a.map((v, i) => Math.round(v + (b[i] - v) * k));
+    if (L < 0.6) return COOL;
+    if (L < 0.9) return mix(COOL, WARM, (L - 0.6) / 0.3);
+    if (L < 1) return mix(WARM, HOT, (L - 0.9) / 0.1);
+    return HOT;
+  }
+  const rgba = (c, a) => `rgba(${c[0]},${c[1]},${c[2]},${a.toFixed(3)})`;
+
   function render() {
     ctx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
     ctx.fillStyle = PAL.bg;
@@ -1913,7 +1546,7 @@
     for (let y = vy0; y <= vy1; y++) {
       for (let x = vx0; x <= vx1; x++) {
         const i = idx(x, y);
-        if (rough(i) || G.road[i] || G.occ[i]) continue;
+        if (rough(i) || G.adj[i].size || G.occ[i]) continue;
         const cx = sx(x + 0.5), cy = sy(y + 0.5);
         if (G.deco[i]) {
           ctx.fillStyle = inB(x, y) ? PAL.tree : 'rgba(0,0,0,0.06)';
@@ -1958,7 +1591,7 @@
     for (let y = vy0; y <= vy1; y++) {
       for (let x = vx0; x <= vx1; x++) {
         const i = idx(x, y);
-        if (!G.mount[i] || G.road[i]) continue;
+        if (!G.mount[i] || G.adj[i].size) continue;
         const cx = sx(x + 0.5), base = sy(y + 0.85);
         const h = s * (0.5 + ((x * 7 + y * 13) % 3) * 0.08);
         const w = s * 0.42;
@@ -1970,264 +1603,261 @@
     }
 
     // dim outside bounds
-    ctx.fillStyle = 'rgba(220,235,255,0.35)';
+    ctx.fillStyle = 'rgba(2,4,10,0.45)';
     const bx0 = sx(B.x0), by0 = sy(B.y0), bx1 = sx(B.x1 + 1), by1 = sy(B.y1 + 1);
     ctx.fillRect(sx(0), sy(0), G.W * s, by0 - sy(0));
     ctx.fillRect(sx(0), by1, G.W * s, sy(G.H) - by1);
     ctx.fillRect(sx(0), by0, bx0 - sx(0), by1 - by0);
     ctx.fillRect(bx1, by0, sx(G.W) - bx1, by1 - by0);
 
-    // roads
-    const roadEdges = [];
-    const motorEdges = [];
-    for (const e of G.edges.values()) (e.type === 'motor' ? motorEdges : roadEdges).push(e);
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    const line = (e) => { ctx.moveTo(sx(tx(e.a) + 0.5), sy(ty(e.a) + 0.5)); ctx.lineTo(sx(tx(e.b) + 0.5), sy(ty(e.b) + 0.5)); };
-
-    // express tunnels run underground: a faint dashed line under everything,
-    // with their cars as faint shapes, so nothing on the surface is hidden
-    for (const e of motorEdges) {
-      ctx.strokeStyle = 'rgba(255,212,94,0.10)';
-      ctx.lineWidth = s * 0.5;
-      ctx.beginPath(); line(e); ctx.stroke();
-      if (e.jam > 0.06) {
-        ctx.strokeStyle = `rgba(226,74,40,${Math.min(0.5, e.jam * 0.6).toFixed(3)})`;
-        ctx.beginPath(); line(e); ctx.stroke();
-      }
-      ctx.strokeStyle = 'rgba(255,212,94,0.7)';
-      ctx.lineWidth = Math.max(1.5, s * 0.08);
-      ctx.setLineDash([s * 0.22, s * 0.2]);
-      ctx.beginPath(); line(e); ctx.stroke();
-      ctx.setLineDash([]);
-    }
-    ctx.globalAlpha = 0.5;
-    drawCars(true);
-    ctx.globalAlpha = 1;
-    // bridge decks
-    // sea cables: a lit channel under the cable
-    ctx.strokeStyle = 'rgba(74,168,255,0.35)';
-    ctx.lineWidth = s * 0.5;
-    ctx.beginPath();
-    for (const e of roadEdges) if (G.water[e.a] || G.water[e.b]) line(e);
-    ctx.stroke();
-    // cables are thin lines with a soft glow, not fat roads
-    ctx.strokeStyle = 'rgba(120,170,255,0.13)';
-    ctx.lineWidth = s * 0.62;
-    ctx.beginPath();
-    for (const e of roadEdges) line(e);
-    ctx.stroke();
-    ctx.strokeStyle = PAL.roadEdge;
-    ctx.lineWidth = s * 0.26;
-    ctx.beginPath();
-    for (const e of roadEdges) line(e);
-    ctx.stroke();
-    ctx.strokeStyle = PAL.road;
-    ctx.lineWidth = s * 0.15;
-    ctx.beginPath();
-    for (const e of roadEdges) line(e);
-    ctx.stroke();
-    // current flowing along every cable
-    ctx.strokeStyle = 'rgba(210,230,255,0.45)';
-    ctx.lineWidth = Math.max(1, s * 0.05);
-    ctx.setLineDash([s * 0.12, s * 0.38]);
-    ctx.lineDashOffset = -(G.time * s * 0.7) % (s * 0.5);
-    ctx.beginPath();
-    for (const e of roadEdges) line(e);
-    ctx.stroke();
-    ctx.setLineDash([]);
-    // overload: cables run hot, glowing amber then red
-    ctx.lineWidth = s * 0.2;
-    for (const e of roadEdges) {
-      if (!(e.jam > 0.06)) continue;
-      const g = Math.round(200 - 120 * Math.min(1, e.jam));
-      ctx.strokeStyle = `rgba(255,${g},60,${Math.min(0.95, 0.3 + e.jam * 0.7).toFixed(3)})`;
-      ctx.beginPath(); line(e); ctx.stroke();
-    }
-    // one-way arrows
-    ctx.strokeStyle = 'rgba(255,255,255,0.75)';
-    ctx.lineWidth = Math.max(1.2, s * 0.06);
-    for (const e of roadEdges) {
-      if (e.from === undefined) continue;
-      const to = e.from === e.a ? e.b : e.a;
-      const ax = tx(e.from) + 0.5, ay = ty(e.from) + 0.5, bx = tx(to) + 0.5, by = ty(to) + 0.5;
-      ctx.save();
-      ctx.translate(sx((ax + bx) / 2), sy((ay + by) / 2));
-      ctx.rotate(Math.atan2(by - ay, bx - ax));
-      ctx.beginPath();
-      ctx.moveTo(-s * 0.1, -s * 0.12); ctx.lineTo(s * 0.05, 0); ctx.lineTo(-s * 0.1, s * 0.12);
-      ctx.stroke();
-      ctx.restore();
-    }
-    // lone road tiles and node caps
-    ctx.fillStyle = PAL.road;
-    for (let y = vy0; y <= vy1; y++) {
-      for (let x = vx0; x <= vx1; x++) {
-        const i = idx(x, y);
-        if (G.road[i] && G.adj[i].size === 0) {
-          ctx.beginPath(); ctx.arc(sx(x + 0.5), sy(y + 0.5), s * 0.13, 0, Math.PI * 2); ctx.fill();
-        }
-      }
-    }
-    // roundabouts
-    for (let y = vy0; y <= vy1; y++) {
-      for (let x = vx0; x <= vx1; x++) {
-        const i = idx(x, y);
-        if (!G.round[i]) continue;
-        const cx = sx(x + 0.5), cy = sy(y + 0.5);
-        // transformer: a coil of rings with a bright core
-        ctx.fillStyle = '#10182a';
-        ctx.beginPath(); ctx.arc(cx, cy, s * 0.42, 0, Math.PI * 2); ctx.fill();
-        ctx.strokeStyle = '#ffd45e';
-        ctx.lineWidth = Math.max(1.5, s * 0.07);
-        ctx.beginPath(); ctx.arc(cx, cy, s * 0.36, 0, Math.PI * 2); ctx.stroke();
-        ctx.lineWidth = Math.max(1, s * 0.04);
-        ctx.beginPath(); ctx.arc(cx, cy, s * 0.25, 0, Math.PI * 2); ctx.stroke();
-        ctx.fillStyle = '#ffd45e';
-        ctx.beginPath(); ctx.arc(cx, cy, s * 0.1, 0, Math.PI * 2); ctx.fill();
-      }
-    }
-    // crossings
-    for (let y = vy0; y <= vy1; y++) {
-      for (let x = vx0; x <= vx1; x++) {
-        if (!G.overpass[idx(x, y)]) continue;
-        // the east-west cable hops over the north-south one
-        const xc = sx(x + 0.5), yc = sy(y + 0.5);
-        ctx.fillStyle = PAL.land;
-        ctx.beginPath(); ctx.arc(xc, yc, s * 0.2, 0, Math.PI * 2); ctx.fill();
-        ctx.strokeStyle = PAL.road;
-        ctx.lineWidth = s * 0.15;
-        ctx.lineCap = 'round';
-        ctx.beginPath();
-        ctx.moveTo(sx(x) - s * 0.05, yc);
-        ctx.lineTo(xc - s * 0.3, yc);
-        ctx.arc(xc, yc, s * 0.3, Math.PI, 0);
-        ctx.lineTo(sx(x + 1) + s * 0.05, yc);
-        ctx.stroke();
-      }
-    }
-
-    // cars on ordinary roads
-    drawCars(false);
-
-    // tunnels: cover the road inside the hill, and draw a mouth at each end
-    ctx.fillStyle = 'rgba(195,180,154,0.82)';
-    for (let y = vy0; y <= vy1; y++) {
-      for (let x = vx0; x <= vx1; x++) {
-        const i = idx(x, y);
-        if (G.mount[i] && G.road[i]) ctx.fillRect(sx(x) - 0.5, sy(y) - 0.5, s + 1, s + 1);
-      }
-    }
-    ctx.fillStyle = '#3a332b';
-    for (const e of roadEdges) {
-      if (!G.mount[e.a] === !G.mount[e.b]) continue;
-      const inside = G.mount[e.a] ? e.a : e.b;
-      const outside = inside === e.a ? e.b : e.a;
-      const ix = tx(inside) + 0.5, iy = ty(inside) + 0.5, ox = tx(outside) + 0.5, oy = ty(outside) + 0.5;
-      const mx = (ix + ox) / 2, my = (iy + oy) / 2;
-      ctx.save();
-      ctx.translate(sx(mx), sy(my));
-      ctx.rotate(Math.atan2(oy - iy, ox - ix));
-      ctx.beginPath();
-      ctx.arc(0, 0, s * 0.32, -Math.PI / 2, Math.PI / 2, true);
-      ctx.closePath();
-      ctx.fill();
-      ctx.restore();
-    }
-
-    // destinations
-    for (const d of G.dests) drawDest(d);
-    // houses
-    for (const h of G.houses) drawHouse(h);
-
-    // express tunnel entrances: a tunnel mouth at each end, facing the other end
-    for (const e of motorEdges) {
-      for (const [n, o] of [[e.a, e.b], [e.b, e.a]]) {
-        const ang = Math.atan2(ty(o) - ty(n), tx(o) - tx(n));
-        ctx.save();
-        ctx.translate(sx(tx(n) + 0.5), sy(ty(n) + 0.5));
-        ctx.rotate(ang);
-        ctx.fillStyle = PAL.mountLight;
-        ctx.beginPath(); ctx.arc(0, 0, s * 0.42, -Math.PI / 2, Math.PI / 2); ctx.closePath(); ctx.fill();
-        ctx.fillStyle = '#3a332b';
-        ctx.beginPath(); ctx.arc(0, 0, s * 0.3, -Math.PI / 2, Math.PI / 2); ctx.closePath(); ctx.fill();
-        ctx.restore();
-      }
-    }
+    drawNight();
+    drawCables();
+    drawScorch();
+    for (const g of G.gens) drawGen(g);
+    for (const t of G.towns) drawTown(t);
+    drawTrips();
 
     // effects
     for (const f of G.fx) {
       const k = f.t / 0.8;
-      if (f.type === 'ring') {
-        ctx.strokeStyle = f.color;
-        ctx.globalAlpha = 1 - k;
-        ctx.lineWidth = s * 0.1;
-        ctx.beginPath(); ctx.arc(sx(f.x), sy(f.y), s * (0.3 + k * 0.6), 0, Math.PI * 2); ctx.stroke();
-        ctx.globalAlpha = 1;
-      } else if (f.type === 'poof') {
-        ctx.fillStyle = 'rgba(120,120,120,' + (0.5 * (1 - k)) + ')';
-        ctx.beginPath(); ctx.arc(sx(f.x), sy(f.y), s * (0.15 + k * 0.4), 0, Math.PI * 2); ctx.fill();
+      if (f.type === 'spark') {
+        ctx.strokeStyle = rgba(HOT, 1 - k);
+        ctx.lineWidth = s * 0.08;
+        for (let r = 0; r < 6; r++) {
+          const a = r * 1.05 + f.x;
+          ctx.beginPath();
+          ctx.moveTo(sx(f.x) + Math.cos(a) * s * 0.2 * k, sy(f.y) + Math.sin(a) * s * 0.2 * k);
+          ctx.lineTo(sx(f.x) + Math.cos(a) * s * (0.3 + k * 0.7), sy(f.y) + Math.sin(a) * s * (0.3 + k * 0.7));
+          ctx.stroke();
+        }
+      } else if (f.type === 'strand') {
+        ctx.strokeStyle = `rgba(200,225,255,${(0.8 * (1 - k)).toFixed(3)})`;
+        ctx.lineWidth = s * 0.06;
+        ctx.beginPath(); ctx.arc(sx(f.x), sy(f.y), s * (0.15 + k * 0.4), 0, Math.PI * 2); ctx.stroke();
       }
     }
 
     // tool hints
-    if (tool === 'motor' && motorStart >= 0) {
+    if (tool === 'link' && linkStart >= 0) {
       const pulse = 0.5 + 0.5 * Math.sin(performance.now() / 180);
-      ctx.strokeStyle = PAL.motorLine;
-      ctx.lineWidth = s * 0.12;
-      ctx.beginPath(); ctx.arc(sx(tx(motorStart) + 0.5), sy(ty(motorStart) + 0.5), s * (0.42 + pulse * 0.1), 0, Math.PI * 2); ctx.stroke();
+      ctx.strokeStyle = PAL.link;
+      ctx.lineWidth = s * 0.1;
+      ctx.beginPath(); ctx.arc(sx(tx(linkStart) + 0.5), sy(ty(linkStart) + 0.5), s * (0.42 + pulse * 0.1), 0, Math.PI * 2); ctx.stroke();
+      ctx.setLineDash([s * 0.1, s * 0.15]);
+      ctx.lineWidth = Math.max(1, s * 0.04);
+      ctx.beginPath(); ctx.arc(sx(tx(linkStart) + 0.5), sy(ty(linkStart) + 0.5), s * LINK_RANGE, 0, Math.PI * 2); ctx.stroke();
+      ctx.setLineDash([]);
     }
-    if (action && action.tool === 'road' && action.last >= 0) {
+    if (action && action.tool === 'cable' && action.last >= 0) {
       ctx.strokeStyle = 'rgba(220,235,255,0.45)';
       ctx.lineWidth = Math.max(1.5, s * 0.06);
       ctx.beginPath(); ctx.arc(sx(tx(action.last) + 0.5), sy(ty(action.last) + 0.5), s * 0.46, 0, Math.PI * 2); ctx.stroke();
     }
-    if (tool === 'move' && moveFrom) {
-      const pulse = 0.5 + 0.5 * Math.sin(performance.now() / 180);
-      ctx.strokeStyle = COLORS[moveFrom.color].dark;
-      ctx.lineWidth = s * 0.1;
-      ctx.beginPath(); ctx.arc(sx(tx(moveFrom.i) + 0.5), sy(ty(moveFrom.i) + 0.5), s * (0.5 + pulse * 0.1), 0, Math.PI * 2); ctx.stroke();
-    }
-    if (hoverTile >= 0 && !action && tool !== 'road') {
-      ctx.strokeStyle = 'rgba(220,235,255,0.3)';
+    if (hoverTile >= 0 && !action && tool !== 'cable') {
+      const ok = GEN[tool] ? placeCheck(tool, hoverTile) === 'ok' : true;
+      ctx.strokeStyle = ok ? 'rgba(220,235,255,0.35)' : 'rgba(255,90,60,0.6)';
       ctx.lineWidth = 1.5;
       ctx.strokeRect(sx(tx(hoverTile)) + 1, sy(ty(hoverTile)) + 1, s - 2, s - 2);
     }
+    if (GEN[tool] === GEN.coal && G.res.coal > 0) {
+      // show where coal can't go
+      ctx.fillStyle = 'rgba(255,90,60,0.08)';
+      for (const t of G.towns) {
+        const r = COAL_CLEAR;
+        ctx.fillRect(sx(tx(t.i) - r), sy(ty(t.i) - r), s * (2 * r + 1), s * (2 * r + 1));
+      }
+    }
 
-    if (G.over && G.overDest) {
-      const d = G.overDest;
+    if (G.over && G.overTown) {
+      const t = G.overTown;
       const pulse = 0.5 + 0.5 * Math.sin(performance.now() / 150);
-      ctx.strokeStyle = COLORS[d.color].fill;
+      ctx.strokeStyle = PAL.hot;
       ctx.lineWidth = s * 0.15;
       ctx.globalAlpha = 0.5 + pulse * 0.5;
-      ctx.beginPath(); ctx.arc(sx(d.x + 1), sy(d.y + 1), s * (1.8 + pulse * 0.3), 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath(); ctx.arc(sx(tx(t.i) + 0.5), sy(ty(t.i) + 0.5), s * (1.3 + pulse * 0.3), 0, Math.PI * 2); ctx.stroke();
       ctx.globalAlpha = 1;
     }
     drawTipHighlights();
     drawInspect();
     drawEdgeArrows();
-    drawTrips();
-    drawNight();
+  }
+
+  function seg(e) {
+    ctx.moveTo(sx(tx(e.a) + 0.5), sy(ty(e.a) + 0.5));
+    ctx.lineTo(sx(tx(e.b) + 0.5), sy(ty(e.b) + 0.5));
+  }
+  function linkPath(e) {
+    const x1 = sx(tx(e.a) + 0.5), y1 = sy(ty(e.a) + 0.5), x2 = sx(tx(e.b) + 0.5), y2 = sy(ty(e.b) + 0.5);
+    const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
+    const dx = x2 - x1, dy = y2 - y1;
+    const cx = mx - dy * 0.22, cy = my + dx * 0.22;
+    ctx.moveTo(x1, y1);
+    ctx.quadraticCurveTo(cx, cy, x2, y2);
+  }
+
+  function drawCables() {
+    const s = cam.s;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    const edges = [...G.edges.values()];
+    // channels under sea and underground cables
+    for (const e of edges) {
+      if (e.kind !== 'sea' && e.kind !== 'under') continue;
+      ctx.strokeStyle = e.kind === 'sea' ? 'rgba(74,168,255,0.28)' : 'rgba(5,8,16,0.6)';
+      ctx.lineWidth = s * 0.55;
+      ctx.beginPath(); seg(e); ctx.stroke();
+    }
+    for (const e of edges) {
+      const col = loadRgb(e.load);
+      const isLink = e.kind === 'link';
+      const path = () => { ctx.beginPath(); if (isLink) linkPath(e); else seg(e); };
+      // glow
+      ctx.strokeStyle = rgba(col, 0.14 + Math.min(0.25, e.load * 0.18));
+      ctx.lineWidth = s * (isLink ? 0.5 : 0.3 + 0.12 * e.lvl);
+      path(); ctx.stroke();
+      if (e.heat > 0.05) {
+        const pulse = 0.5 + 0.5 * Math.sin(G.time * (6 + e.heat * 14));
+        ctx.strokeStyle = rgba(HOT, Math.min(0.85, e.heat * (0.4 + 0.5 * pulse)));
+        ctx.lineWidth = s * (0.45 + 0.25 * e.heat);
+        path(); ctx.stroke();
+      }
+      // strands, side by side
+      if (isLink) {
+        ctx.strokeStyle = PAL.link;
+        ctx.lineWidth = Math.max(2, s * 0.12);
+        path(); ctx.stroke();
+      } else {
+        const x1 = sx(tx(e.a) + 0.5), y1 = sy(ty(e.a) + 0.5), x2 = sx(tx(e.b) + 0.5), y2 = sy(ty(e.b) + 0.5);
+        const L = Math.hypot(x2 - x1, y2 - y1) || 1;
+        const nx = -(y2 - y1) / L, ny = (x2 - x1) / L;
+        ctx.strokeStyle = rgba(col, e.kind === 'under' ? 0.6 : 1);
+        ctx.lineWidth = Math.max(1.2, s * 0.075);
+        if (e.kind === 'under') ctx.setLineDash([s * 0.16, s * 0.1]);
+        for (let k = 0; k < e.lvl; k++) {
+          const off = (k - (e.lvl - 1) / 2) * s * 0.14;
+          ctx.beginPath();
+          ctx.moveTo(x1 + nx * off, y1 + ny * off);
+          ctx.lineTo(x2 + nx * off, y2 + ny * off);
+          ctx.stroke();
+        }
+        ctx.setLineDash([]);
+      }
+      // current flowing along it, in the direction it really flows
+      const f = Math.abs(e.flow);
+      if (f > 0.05) {
+        const speed = s * (0.5 + 0.22 * Math.min(10, f));
+        const period = s * 0.42;
+        ctx.save();
+        ctx.strokeStyle = `rgba(235,245,255,${(0.35 + 0.5 * Math.min(1, e.load)).toFixed(3)})`;
+        ctx.lineWidth = Math.max(1.5, s * 0.07);
+        ctx.setLineDash([s * 0.08, period - s * 0.08]);
+        ctx.lineDashOffset = -((G.time * speed) % period);
+        ctx.beginPath();
+        const fwd = e.flow > 0;
+        const a = fwd ? e.a : e.b, b = fwd ? e.b : e.a;
+        if (isLink) {
+          const x1 = sx(tx(a) + 0.5), y1 = sy(ty(a) + 0.5), x2 = sx(tx(b) + 0.5), y2 = sy(ty(b) + 0.5);
+          const mx = (x1 + x2) / 2, my = (y1 + y2) / 2, dx = x2 - x1, dy = y2 - y1;
+          const sign = fwd ? 1 : -1;
+          ctx.moveTo(x1, y1);
+          ctx.quadraticCurveTo(mx - dy * 0.22 * sign, my + dx * 0.22 * sign, x2, y2);
+        } else {
+          ctx.moveTo(sx(tx(a) + 0.5), sy(ty(a) + 0.5));
+          ctx.lineTo(sx(tx(b) + 0.5), sy(ty(b) + 0.5));
+        }
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+    // joints
+    const seen = new Set();
+    for (const e of edges) {
+      for (const n of [e.a, e.b]) {
+        if (seen.has(n) || G.occ[n]) continue;
+        seen.add(n);
+        const deg = G.adj[n].size;
+        let worst = 0, lvl = 1;
+        for (const x of G.adj[n].values()) { worst = Math.max(worst, x.load); lvl = Math.max(lvl, x.kind === 'link' ? 2 : x.lvl); }
+        const cx = sx(tx(n) + 0.5), cy = sy(ty(n) + 0.5);
+        ctx.fillStyle = rgba(loadRgb(worst), 1);
+        const r = s * (deg >= 3 ? 0.13 + 0.03 * lvl : 0.06 + 0.035 * lvl);
+        ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
+        if (G.guard[n]) drawGuard(cx, cy);
+      }
+    }
+    for (const t of G.trips) {
+      for (const n of [t.e.a, t.e.b]) if (G.guard[n] && !seen.has(n)) { seen.add(n); drawGuard(sx(tx(n) + 0.5), sy(ty(n) + 0.5)); }
+    }
+  }
+
+  function drawGuard(cx, cy) {
+    const s = cam.s, r = s * 0.3;
+    ctx.fillStyle = 'rgba(47,224,192,0.22)';
+    ctx.strokeStyle = '#2fe0c0';
+    ctx.lineWidth = Math.max(1.5, s * 0.06);
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - r);
+    ctx.lineTo(cx + r * 0.85, cy - r * 0.6);
+    ctx.lineTo(cx + r * 0.85, cy + r * 0.05);
+    ctx.quadraticCurveTo(cx + r * 0.7, cy + r * 0.8, cx, cy + r);
+    ctx.quadraticCurveTo(cx - r * 0.7, cy + r * 0.8, cx - r * 0.85, cy + r * 0.05);
+    ctx.lineTo(cx - r * 0.85, cy - r * 0.6);
+    ctx.closePath();
+    ctx.fill(); ctx.stroke();
+  }
+
+  function drawScorch() {
+    const s = cam.s;
+    for (const sc of G.scorch) {
+      const k = Math.min(1, sc.left / 3);
+      const x1 = sx(tx(sc.a) + 0.5), y1 = sy(ty(sc.a) + 0.5), x2 = sx(tx(sc.b) + 0.5), y2 = sy(ty(sc.b) + 0.5);
+      ctx.save();
+      ctx.lineCap = 'round';
+      ctx.strokeStyle = `rgba(0,0,0,${(0.55 * k).toFixed(3)})`;
+      ctx.lineWidth = s * 0.4;
+      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+      ctx.strokeStyle = `rgba(255,120,60,${(0.5 * k * (0.6 + 0.4 * Math.sin(G.time * 9 + sc.a))).toFixed(3)})`;
+      ctx.lineWidth = Math.max(1, s * 0.05);
+      ctx.setLineDash([s * 0.05, s * 0.12]);
+      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+      ctx.restore();
+    }
   }
 
   function drawTrips() {
     const s = cam.s;
     for (const t of G.trips) {
-      const a = base(t.e.a), b = base(t.e.b);
+      const a = t.e.a, b = t.e.b;
       const x1 = sx(tx(a) + 0.5), y1 = sy(ty(a) + 0.5), x2 = sx(tx(b) + 0.5), y2 = sy(ty(b) + 0.5);
       const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
       const pulse = 0.5 + 0.5 * Math.sin(performance.now() / 160);
       // dashed ghost of the missing cable, with a flashing bolt in the gap
       ctx.save();
-      ctx.strokeStyle = `rgba(255,106,77,${0.35 + 0.3 * pulse})`;
-      ctx.lineWidth = s * 0.3;
-      ctx.setLineDash([s * 0.18, s * 0.18]);
-      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+      ctx.strokeStyle = `rgba(255,106,77,${(0.35 + 0.3 * pulse).toFixed(3)})`;
+      ctx.lineWidth = s * 0.22;
+      ctx.setLineDash([s * 0.14, s * 0.16]);
+      ctx.beginPath();
+      if (t.e.kind === 'link') linkPath(t.e); else { ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); }
+      ctx.stroke();
       ctx.setLineDash([]);
-      ctx.fillStyle = `rgba(255,106,77,${0.8 + 0.2 * pulse})`;
-      ctx.beginPath(); ctx.arc(mx, my, s * (0.3 + 0.05 * pulse), 0, Math.PI * 2); ctx.fill();
+      // While locked, a red ring empties and the bolt is grey. After that, a white
+      // ring counts down to the breaker resetting itself, and a tap resets it now.
+      const locked = t.lock > 0;
+      ctx.strokeStyle = locked ? PAL.hot : 'rgba(255,255,255,0.75)';
+      ctx.lineWidth = Math.max(2, s * 0.07);
+      const frac = locked ? t.lock / (t.lockMax || 1) : Math.min(1, t.left / TRIP_RESET);
+      ctx.beginPath(); ctx.arc(mx, my, s * 0.44, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * frac); ctx.stroke();
+      ctx.fillStyle = locked ? '#5a6275' : `rgba(255,106,77,${(0.8 + 0.2 * pulse).toFixed(3)})`;
+      ctx.beginPath(); ctx.arc(mx, my, s * (locked ? 0.34 : 0.34 + 0.04 * pulse), 0, Math.PI * 2); ctx.fill();
+      if (t.e.trips > 1) {
+        // one dot per repeat trip, so you can see a cable is close to burning out
+        ctx.fillStyle = PAL.hot;
+        for (let k = 0; k < t.e.trips - 1; k++) {
+          ctx.beginPath(); ctx.arc(mx + s * (0.5 + k * 0.16), my - s * 0.38, s * 0.06, 0, Math.PI * 2); ctx.fill();
+        }
+      }
       ctx.fillStyle = '#fff';
-      const r = s * 0.2;
+      const r = s * 0.19;
       ctx.beginPath();
       ctx.moveTo(mx + r * 0.25, my - r); ctx.lineTo(mx - r * 0.6, my + r * 0.1); ctx.lineTo(mx - r * 0.05, my + r * 0.1);
       ctx.lineTo(mx - r * 0.25, my + r); ctx.lineTo(mx + r * 0.6, my - r * 0.1); ctx.lineTo(mx + r * 0.05, my - r * 0.1);
@@ -2236,12 +1866,154 @@
     }
   }
 
+  function drawGen(g) {
+    const s = cam.s;
+    const k = popScale(g.born);
+    if (k <= 0) return;
+    const cx = sx(tx(g.i) + 0.5), cy = sy(ty(g.i) + 0.5);
+    const w = s * 0.86 * k;
+    const wired = G.adj[g.i].size > 0;
+    const active = g.type === 'battery' ? Math.abs(g.rate) > 0.05 || g.soc > 1 : g.out > 0.05 || (g.type === 'coal' && wired);
+    const bodies = { coal: '#2a2f3c', solar: '#122a4d', wind: '#163634', battery: '#14302b' };
+    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    rr(cx - w / 2 + s * 0.05, cy - w / 2 + s * 0.08, w, w, s * 0.18);
+    ctx.fill();
+    ctx.fillStyle = bodies[g.type];
+    rr(cx - w / 2, cy - w / 2, w, w, s * 0.18);
+    ctx.fill();
+    ctx.strokeStyle = active ? 'rgba(220,235,255,0.75)' : 'rgba(220,235,255,0.25)';
+    ctx.lineWidth = Math.max(1, s * 0.04);
+    ctx.stroke();
+    const u = w / 2;
+    if (g.type === 'coal') {
+      ctx.fillStyle = '#56658a';
+      ctx.fillRect(cx - u * 0.7, cy - u * 0.05, u * 1.4, u * 0.7);
+      ctx.fillRect(cx + u * 0.15, cy - u * 0.7, u * 0.35, u * 0.7);
+      ctx.fillStyle = active ? PAL.lit : '#34405a';
+      ctx.fillRect(cx - u * 0.5, cy + u * 0.15, u * 0.25, u * 0.25);
+      ctx.fillRect(cx - u * 0.1, cy + u * 0.15, u * 0.25, u * 0.25);
+      if (active) {
+        for (let n = 0; n < 3; n++) {
+          const p = ((G.time * 0.5 + n / 3) % 1);
+          ctx.fillStyle = `rgba(150,160,180,${(0.5 * (1 - p)).toFixed(3)})`;
+          ctx.beginPath(); ctx.arc(cx + u * 0.32 + p * u * 0.4, cy - u * 0.8 - p * u * 0.6, u * (0.12 + p * 0.2), 0, Math.PI * 2); ctx.fill();
+        }
+      }
+    } else if (g.type === 'solar') {
+      const b = sun();
+      ctx.fillStyle = b > 0 ? `rgb(${Math.round(40 + 40 * b)},${Math.round(100 + 80 * b)},${Math.round(180 + 60 * b)})` : '#1a2a44';
+      for (let r = 0; r < 2; r++) for (let q = 0; q < 2; q++) ctx.fillRect(cx - u * 0.68 + q * u * 0.7, cy - u * 0.55 + r * u * 0.6, u * 0.62, u * 0.52);
+    } else if (g.type === 'wind') {
+      ctx.strokeStyle = '#c9d6ee';
+      ctx.lineWidth = Math.max(1, s * 0.05);
+      ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx, cy + u * 0.8); ctx.stroke();
+      ctx.lineWidth = Math.max(1.5, s * 0.07);
+      for (let n = 0; n < 3; n++) {
+        const a = g.ang + (n * Math.PI * 2) / 3;
+        ctx.beginPath(); ctx.moveTo(cx, cy - u * 0.1); ctx.lineTo(cx + Math.cos(a) * u * 0.72, cy - u * 0.1 + Math.sin(a) * u * 0.72); ctx.stroke();
+      }
+      ctx.fillStyle = '#fff';
+      ctx.beginPath(); ctx.arc(cx, cy - u * 0.1, u * 0.1, 0, Math.PI * 2); ctx.fill();
+    } else {
+      const frac = g.soc / GEN.battery.store;
+      ctx.strokeStyle = '#2fe0c0';
+      ctx.lineWidth = Math.max(1, s * 0.05);
+      ctx.strokeRect(cx - u * 0.6, cy - u * 0.4, u * 1.1, u * 0.8);
+      ctx.fillStyle = '#2fe0c0';
+      ctx.fillRect(cx + u * 0.5, cy - u * 0.15, u * 0.15, u * 0.3);
+      ctx.fillRect(cx - u * 0.5, cy - u * 0.3, u * 0.9 * frac, u * 0.6);
+      if (Math.abs(g.rate) > 0.05) {
+        ctx.fillStyle = '#fff';
+        const up = g.rate < 0;
+        const ay = cy + (up ? -1 : 1) * Math.sin(G.time * 5) * u * 0.05;
+        ctx.beginPath();
+        ctx.moveTo(cx - u * 0.05, ay + (up ? -u * 0.2 : u * 0.2));
+        ctx.lineTo(cx - u * 0.25, ay + (up ? u * 0.1 : -u * 0.1));
+        ctx.lineTo(cx + u * 0.15, ay + (up ? u * 0.1 : -u * 0.1));
+        ctx.closePath(); ctx.fill();
+      }
+    }
+    // output bar
+    const frac = g.type === 'battery' ? Math.abs(g.rate) / GEN.battery.max : g.out / genMax(g);
+    const bw = w * 0.8, by = cy + w / 2 + s * 0.06;
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.fillRect(cx - bw / 2, by, bw, Math.max(2, s * 0.07));
+    ctx.fillStyle = g.type === 'battery' && g.rate < 0 ? '#2fe0c0' : PAL.lit;
+    ctx.fillRect(cx - bw / 2, by, bw * clamp(frac, 0, 1), Math.max(2, s * 0.07));
+    if (!wired) {
+      const pulse = 0.5 + 0.5 * Math.sin(G.time * 4 + g.id);
+      ctx.strokeStyle = `rgba(220,235,255,${(0.2 + 0.35 * pulse).toFixed(3)})`;
+      ctx.lineWidth = Math.max(1, s * 0.05);
+      ctx.beginPath(); ctx.arc(cx, cy, s * 0.62, 0, Math.PI * 2); ctx.stroke();
+    }
+  }
+
+  // A town is a block of windows. As it loses power its lights go out a few
+  // at a time, in a scattered order, until the whole block is dark.
+  function drawTown(t) {
+    const s = cam.s;
+    const k = popScale(t.born);
+    if (k <= 0) return;
+    const cx = sx(tx(t.i) + 0.5), cy = sy(ty(t.i) + 0.5);
+    const base = townBase(t);
+    const n = base < 3 ? 2 : base < 4.5 ? 3 : 4;
+    const w = s * (1.1 + 0.08 * n) * k;
+    const graced = G.time - t.born < GRACE;
+    const short = t.served < 0.995 && !graced;
+    if (t.dark > 0.01) {
+      const pulse = 0.5 + 0.5 * Math.sin(G.time * (3 + 8 * t.dark));
+      ctx.strokeStyle = rgba(HOT, 0.25 + 0.3 * pulse * (short ? 1 : 0.3));
+      ctx.lineWidth = s * 0.1;
+      ctx.beginPath(); ctx.arc(cx, cy, w * 0.82, 0, Math.PI * 2); ctx.stroke();
+      ctx.strokeStyle = PAL.hot;
+      ctx.lineWidth = s * 0.12;
+      ctx.beginPath(); ctx.arc(cx, cy, w * 0.82, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * t.dark); ctx.stroke();
+    } else if (graced && t.grid < 0) {
+      ctx.save();
+      ctx.strokeStyle = 'rgba(220,235,255,0.55)';
+      ctx.lineWidth = Math.max(1.5, s * 0.06);
+      ctx.setLineDash([s * 0.2, s * 0.16]);
+      ctx.lineDashOffset = -G.time * s * 0.5;
+      ctx.beginPath(); ctx.arc(cx, cy, w * 0.8, 0, Math.PI * 2); ctx.stroke();
+      ctx.restore();
+    }
+    if (t.lit > 0.05) {
+      const glow = ctx.createRadialGradient(cx, cy, w * 0.2, cx, cy, w * 1.1);
+      glow.addColorStop(0, `rgba(255,200,90,${(0.22 * t.lit).toFixed(3)})`);
+      glow.addColorStop(1, 'rgba(255,200,90,0)');
+      ctx.fillStyle = glow;
+      ctx.fillRect(cx - w * 1.1, cy - w * 1.1, w * 2.2, w * 2.2);
+    }
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    rr(cx - w / 2 + s * 0.06, cy - w / 2 + s * 0.1, w, w, s * 0.16);
+    ctx.fill();
+    ctx.fillStyle = '#273250';
+    rr(cx - w / 2, cy - w / 2, w, w, s * 0.16);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(220,235,255,0.35)';
+    ctx.lineWidth = Math.max(1, s * 0.03);
+    ctx.stroke();
+    const total = n * n;
+    const on = Math.round(t.lit * total);
+    const pad = w * 0.14, cell = (w - pad * 2) / n, win = cell * 0.62;
+    for (let q = 0; q < total; q++) {
+      const order = (q * 7 + t.id * 3) % total; // scattered: windows go dark in a mixed-up order
+      const r = Math.floor(q / n), c = q % n;
+      const x = cx - w / 2 + pad + c * cell + (cell - win) / 2;
+      const y = cy - w / 2 + pad + r * cell + (cell - win) / 2;
+      const lit = order < on;
+      const flicker = lit && short && Math.sin(G.time * 13 + q * 2.1) > 0.92;
+      ctx.fillStyle = lit && !flicker ? PAL.lit : PAL.unlit;
+      ctx.fillRect(x, y, win, win);
+    }
+  }
+
   // Overnight the board dims; in the evening peak it warms up slightly.
   function drawNight() {
     const p = dayPhase();
     const night = Math.min(1, Math.max(0, -Math.sin(2 * Math.PI * (p - 0.25)) * 1.5));
     const dusk = Math.min(1, Math.max(0, 1 - Math.abs(p - 0.78) / 0.1));
-    const dark = night * 0.3, warm = dusk * 0.07;
+    const dark = night * 0.38, warm = dusk * 0.07;
     if (dark <= 0 && warm <= 0) return;
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -2250,282 +2022,12 @@
     ctx.restore();
   }
 
-  function drawCars(motor) {
-    const s = cam.s;
-    for (const c of G.cars) {
-      if (!!c.motor !== motor && c.state === 'drive') continue;
-      if (motor && c.state !== 'drive') continue;
-      const p = carPos(c);
-      if (!p) continue;
-      c.ang = p.ang;
-      const col = COLORS[c.color];
-      ctx.save();
-      ctx.translate(sx(p.x), sy(p.y));
-      ctx.rotate(p.ang);
-      const L = s * (c.bus ? 0.6 : 0.36), Wd = s * (c.bus ? 0.25 : 0.21);
-      const rad = c.bus ? Wd * 0.95 : Wd * 0.62;
-      const a0 = ctx.globalAlpha;
-      if (c.leg === 'back') {
-        // spent: an empty ring heading home to recharge
-        ctx.strokeStyle = col.fill;
-        ctx.globalAlpha = a0 * 0.6;
-        ctx.lineWidth = Math.max(1, s * 0.04);
-        ctx.beginPath(); ctx.arc(0, 0, rad * 0.75, 0, Math.PI * 2); ctx.stroke();
-      } else {
-        // charged: a glowing pulse carrying power to a town
-        ctx.fillStyle = col.fill;
-        ctx.globalAlpha = a0 * 0.22;
-        ctx.beginPath(); ctx.arc(0, 0, rad * 2, 0, Math.PI * 2); ctx.fill();
-        ctx.globalAlpha = a0;
-        ctx.beginPath(); ctx.arc(0, 0, rad, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = 'rgba(255,255,255,0.85)';
-        ctx.beginPath(); ctx.arc(0, 0, rad * 0.42, 0, Math.PI * 2); ctx.fill();
-      }
-      ctx.restore();
-    }
-  }
-
-  // One shape per colour, so colours can be told apart without relying on hue.
-  function drawSymbol(color, cx, cy, r, fill) {
-    ctx.fillStyle = fill;
-    ctx.strokeStyle = fill;
-    ctx.lineCap = 'round';
-    ctx.beginPath();
-    switch (color % 6) {
-      case 0: ctx.arc(cx, cy, r * 0.8, 0, Math.PI * 2); ctx.fill(); break;
-      case 1: ctx.moveTo(cx, cy - r); ctx.lineTo(cx + r * 0.95, cy + r * 0.7); ctx.lineTo(cx - r * 0.95, cy + r * 0.7); ctx.closePath(); ctx.fill(); break;
-      case 2: ctx.rect(cx - r * 0.72, cy - r * 0.72, r * 1.44, r * 1.44); ctx.fill(); break;
-      case 3: ctx.moveTo(cx, cy - r); ctx.lineTo(cx + r * 0.8, cy); ctx.lineTo(cx, cy + r); ctx.lineTo(cx - r * 0.8, cy); ctx.closePath(); ctx.fill(); break;
-      case 4: ctx.lineWidth = r * 0.55; ctx.moveTo(cx - r, cy); ctx.lineTo(cx + r, cy); ctx.moveTo(cx, cy - r); ctx.lineTo(cx, cy + r); ctx.stroke(); break;
-      default: ctx.lineWidth = r * 0.55; ctx.moveTo(cx - r * 0.75, cy - r * 0.75); ctx.lineTo(cx + r * 0.75, cy + r * 0.75); ctx.moveTo(cx + r * 0.75, cy - r * 0.75); ctx.lineTo(cx - r * 0.75, cy + r * 0.75); ctx.stroke();
-    }
-  }
-
-  function drawGenGlyph(h, cx, cy, size, ink) {
-    ctx.fillStyle = ink;
-    ctx.strokeStyle = ink;
-    ctx.lineCap = 'round';
-    if (h.type === 'solar') {
-      ctx.beginPath(); ctx.arc(cx, cy, size * 0.15, 0, Math.PI * 2); ctx.fill();
-      ctx.lineWidth = Math.max(1, size * 0.07);
-      ctx.beginPath();
-      for (let k = 0; k < 8; k++) {
-        const a = k * Math.PI / 4;
-        ctx.moveTo(cx + Math.cos(a) * size * 0.24, cy + Math.sin(a) * size * 0.24);
-        ctx.lineTo(cx + Math.cos(a) * size * 0.36, cy + Math.sin(a) * size * 0.36);
-      }
-      ctx.stroke();
-    } else if (h.type === 'wind') {
-      const spin = genOnline(h) ? G.time * 2.2 : 0.4;
-      ctx.lineWidth = Math.max(1, size * 0.07);
-      ctx.beginPath(); ctx.moveTo(cx, cy - size * 0.05); ctx.lineTo(cx, cy + size * 0.36); ctx.stroke();
-      ctx.beginPath();
-      for (let k = 0; k < 3; k++) {
-        const a = spin + k * Math.PI * 2 / 3;
-        ctx.moveTo(cx, cy - size * 0.05);
-        ctx.lineTo(cx + Math.sin(a) * size * 0.34, cy - size * 0.05 - Math.cos(a) * size * 0.34);
-      }
-      ctx.stroke();
-    } else {
-      ctx.beginPath();
-      ctx.moveTo(cx + size * 0.08, cy - size * 0.34);
-      ctx.lineTo(cx - size * 0.2, cy + size * 0.02);
-      ctx.lineTo(cx - size * 0.02, cy + size * 0.02);
-      ctx.lineTo(cx - size * 0.1, cy + size * 0.28);
-      ctx.lineTo(cx + size * 0.22, cy - size * 0.1);
-      ctx.lineTo(cx + size * 0.03, cy - size * 0.1);
-      ctx.closePath();
-      ctx.fill();
-    }
-  }
-
-  function drawHouse(h) {
-    const s = cam.s;
-    const x = tx(h.i), y = ty(h.i);
-    const k = popScale(h.born);
-    if (k <= 0) return;
-    const col = COLORS[h.color];
-    const cx = sx(x + 0.5), cy = sy(y + 0.5);
-    const size = s * 0.66 * k;
-    ctx.fillStyle = 'rgba(0,0,0,0.14)';
-    rr(cx - size / 2 + s * 0.05, cy - size / 2 + s * 0.08, size, size, size * 0.22);
-    ctx.fill();
-    ctx.fillStyle = col.fill;
-    rr(cx - size / 2, cy - size / 2, size, size, size * 0.22);
-    ctx.fill();
-    if (shapesOn) {
-      drawSymbol(h.color, cx, cy - size * 0.1, size * 0.2, '#fff');
-    } else {
-      // roof ridge
-      drawGenGlyph(h, cx, cy, size, col.dark);
-    }
-    if (!genOnline(h)) {
-      // offline: dimmed until the sun comes up or the wind returns
-      ctx.fillStyle = 'rgba(11,15,24,0.55)';
-      rr(cx - size / 2, cy - size / 2, size, size, size * 0.22);
-      ctx.fill();
-    }
-    if (h.battery) {
-      const bw = size * 0.3, bh = size * 0.17;
-      ctx.fillStyle = '#fff';
-      rr(cx + size * 0.2, cy - size * 0.58, bw, bh, bh * 0.25);
-      ctx.fill();
-      ctx.fillRect(cx + size * 0.2 + bw, cy - size * 0.58 + bh * 0.3, bh * 0.2, bh * 0.4);
-    }
-    // cars at home
-    let home = 0;
-    for (const c of G.cars) if (c.house === h && c.state === 'home') home++;
-    ctx.fillStyle = shapesOn ? col.dark : '#fff';
-    for (let n = 0; n < home; n++) {
-      ctx.beginPath();
-      ctx.arc(cx + (n - (home - 1) / 2) * size * 0.26, cy + size * (shapesOn ? 0.29 : 0.2), s * 0.05, 0, Math.PI * 2);
-      ctx.fill();
-    }
-    if (h.cut) {
-      // can't reach its building: gentle pulse ring
-      const pulse = 0.5 + 0.5 * Math.sin(G.time * 4 + h.id);
-      ctx.strokeStyle = col.fill;
-      ctx.globalAlpha = 0.25 + 0.35 * pulse;
-      ctx.lineWidth = Math.max(1, s * 0.05);
-      ctx.beginPath(); ctx.arc(cx, cy, s * 0.55, 0, Math.PI * 2); ctx.stroke();
-      ctx.globalAlpha = 1;
-    }
-  }
-
-  function drawDest(d) {
-    const s = cam.s;
-    const k = popScale(d.born);
-    if (k <= 0) return;
-    const col = COLORS[d.color];
-    const cx = sx(d.x + 1), cy = sy(d.y + 1);
-    const w = s * 1.76 * k;
-    // substations: a cable from the town to a round terminal with a bolt on it
-    for (const port of d.ports) {
-      const px = sx(tx(port) + 0.5), py = sy(ty(port) + 0.5);
-      ctx.lineCap = 'round';
-      ctx.strokeStyle = 'rgba(120,170,255,0.13)';
-      ctx.lineWidth = s * 0.62;
-      ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(px, py); ctx.stroke();
-      ctx.strokeStyle = col.dark;
-      ctx.lineWidth = s * 0.2;
-      ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(px, py); ctx.stroke();
-      ctx.fillStyle = col.dark;
-      ctx.beginPath(); ctx.arc(px, py, s * 0.32, 0, Math.PI * 2); ctx.fill();
-      ctx.strokeStyle = col.fill;
-      ctx.lineWidth = Math.max(1, s * 0.06);
-      ctx.beginPath(); ctx.arc(px, py, s * 0.32, 0, Math.PI * 2); ctx.stroke();
-      if (d.bigPark) {
-        ctx.strokeStyle = 'rgba(255,255,255,0.8)';
-        ctx.lineWidth = Math.max(1, s * 0.04);
-        ctx.beginPath(); ctx.arc(px, py, s * 0.42, 0, Math.PI * 2); ctx.stroke();
-      }
-      ctx.fillStyle = 'rgba(255,255,255,0.9)';
-      const br = s * 0.2;
-      ctx.beginPath();
-      ctx.moveTo(px + br * 0.25, py - br); ctx.lineTo(px - br * 0.6, py + br * 0.1); ctx.lineTo(px - br * 0.05, py + br * 0.1);
-      ctx.lineTo(px - br * 0.25, py + br); ctx.lineTo(px + br * 0.6, py - br * 0.1); ctx.lineTo(px + br * 0.05, py - br * 0.1);
-      ctx.closePath(); ctx.fill();
-    }
-
-    const waiting = waitingAt(d);
-    const over = waiting > PIN_LIMIT;
-    if (d.cut && !over) {
-      // no matching house can reach it yet: same pulse ring as a cut-off house
-      const pulse = 0.5 + 0.5 * Math.sin(G.time * 4 + d.id);
-      ctx.strokeStyle = col.fill;
-      ctx.globalAlpha = 0.25 + 0.35 * pulse;
-      ctx.lineWidth = Math.max(1.5, s * 0.08);
-      ctx.beginPath(); ctx.arc(cx, cy, w * 0.82, 0, Math.PI * 2); ctx.stroke();
-      ctx.globalAlpha = 1;
-    }
-    if (G.rush && G.rush.color === d.color) {
-      // rush hour: a dashed ring spins round the building
-      ctx.save();
-      ctx.strokeStyle = col.dark;
-      ctx.lineWidth = Math.max(2, s * 0.1);
-      ctx.setLineDash([s * 0.28, s * 0.22]);
-      ctx.lineDashOffset = -G.time * s * 0.6;
-      ctx.beginPath(); ctx.arc(cx, cy, w * 0.78, 0, Math.PI * 2); ctx.stroke();
-      ctx.restore();
-    }
-    const u = urgencyOf(d);
-    const phase = u > 0 ? (G.time % pulsePeriod(u)) / pulsePeriod(u) : 0;
-    if (u > 0) {
-      // ripples spreading out from the building, faster and stronger as it fills
-      ctx.strokeStyle = over ? col.dark : col.fill;
-      ctx.lineWidth = Math.max(2, s * (0.08 + 0.14 * u));
-      for (const off of [0, 0.5]) {
-        const p = (phase + off) % 1;
-        ctx.globalAlpha = (1 - p) * (0.35 + 0.6 * u);
-        ctx.beginPath(); ctx.arc(cx, cy, w * (0.62 + 0.8 * p), 0, Math.PI * 2); ctx.stroke();
-      }
-      ctx.globalAlpha = 1;
-    }
-    const shake = over ? Math.sin(G.time * 30) * s * 0.04 : 0;
-    ctx.fillStyle = 'rgba(0,0,0,0.16)';
-    rr(cx - w / 2 + s * 0.08, cy - w / 2 + s * 0.12, w, w, s * 0.28);
-    ctx.fill();
-    ctx.fillStyle = col.fill;
-    rr(cx - w / 2 + shake, cy - w / 2, w, w, s * 0.28);
-    ctx.fill();
-    if (over) {
-      // the building flashes bright on each pulse
-      ctx.fillStyle = `rgba(255,255,255,${0.55 * Math.max(0, 1 - phase * 2.5)})`;
-      rr(cx - w / 2 + shake, cy - w / 2, w, w, s * 0.28);
-      ctx.fill();
-    }
-    ctx.strokeStyle = col.dark;
-    ctx.lineWidth = Math.max(1, s * 0.06);
-    rr(cx - w / 2 + shake + s * 0.18, cy - w / 2 + s * 0.18, w - s * 0.36, w - s * 0.36, s * 0.16);
-    ctx.stroke();
-
-    // pins: solid dots are waiting for a car, rings have a car on the way
-    const n = Math.min(d.pins, 12);
-    const cols = 4;
-    const gap = w * 0.2;
-    ctx.lineWidth = Math.max(1, s * 0.035);
-    for (let i = 0; i < n; i++) {
-      const r = Math.floor(i / cols), c = i % cols;
-      const px2 = cx - gap * 1.5 + c * gap + shake;
-      const py2 = cy - gap * 0.9 + r * gap * 0.9;
-      ctx.beginPath(); ctx.arc(px2, py2, s * 0.085, 0, Math.PI * 2);
-      if (i < waiting) {
-        ctx.fillStyle = i >= PIN_LIMIT ? '#24262c' : '#fff';
-        ctx.fill();
-      } else {
-        ctx.strokeStyle = 'rgba(255,255,255,0.85)';
-        ctx.stroke();
-      }
-    }
-
-    if (shapesOn) {
-      const bx = cx + w / 2 - s * 0.08, by = cy - w / 2 + s * 0.08;
-      ctx.fillStyle = col.dark;
-      ctx.beginPath(); ctx.arc(bx, by, s * 0.3, 0, Math.PI * 2); ctx.fill();
-      drawSymbol(d.color, bx, by, s * 0.16, '#fff');
-    }
-
-    if (d.overflow > 0.001) {
-      const R = s * 1.4;
-      ctx.lineCap = 'round';
-      ctx.strokeStyle = 'rgba(255,255,255,0.75)';
-      ctx.lineWidth = s * 0.34;
-      ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.stroke();
-      ctx.strokeStyle = 'rgba(36,38,44,0.22)';
-      ctx.lineWidth = s * 0.24;
-      ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.stroke();
-      ctx.strokeStyle = col.dark;
-      ctx.beginPath(); ctx.arc(cx, cy, R, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.min(1, d.overflow)); ctx.stroke();
-    }
-  }
-
   // ---------------------------------------------------------------- HUD + screens
   const el = {
-    top: $('#top'), bottom: $('#bottom'), score: $('#score'), weekLabel: $('#weekLabel'), weekBar: $('#weekBar'),
-    cRoads: $('#cRoads'), cRounds: $('#cRounds'), cMotors: $('#cMotors'), cBridges: $('#cBridges'),
-    cTunnels: $('#cTunnels'), tunnelTool: $('#tunnelTool'), scoreSub: $('#scoreSub'),
-    cut: $('#cutPill'), cCut: $('#cCut'), btnFit: $('#btnFit'), btnUndo: $('#btnUndo'),
-    btnPause: $('#btnPause'), btnSpeed: $('#btnSpeed'), toast: $('#toast'),
+    top: $('#top'), bottom: $('#bottom'), score: $('#score'), scoreSub: $('#scoreSub'), weekLabel: $('#weekLabel'), weekBar: $('#weekBar'),
+    gauge: $('#gauge'), gDel: $('#gDel'), gDem: $('#gDem'), gFill: $('#gFill'), gSpare: $('#gSpare'),
+    cCable: $('#cCable'), cSea: $('#cSea'), cUnder: $('#cUnder'), underTool: $('#underTool'), seaTool: $('#seaTool'),
+    btnFit: $('#btnFit'), btnUndo: $('#btnUndo'), btnPause: $('#btnPause'), btnSpeed: $('#btnSpeed'), toast: $('#toast'),
   };
   const ICON_PAUSE = '<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1.2"/><rect x="14" y="5" width="4" height="14" rx="1.2"/></svg>';
   const ICON_PLAY = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.2-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z"/></svg>';
@@ -2534,23 +2036,28 @@
   function updateHud() {
     if (!G) return;
     const zoomed = user.zoom > 1.02;
-    const key = [G.score, G.week, Math.floor(G.weekT), JSON.stringify(G.res), Object.keys(G.owned).join(), G.bridgesUsed,
-      G.tunnelsUsed, G.cutOff, G.targetHit, zoomed, undoStack.length, !!(pendingSnap && pendingSnap.ver !== G.gver), G.map.id, G.paused, G.speed, tool].join('|');
-    el.weekBar.style.width = (G.weekT / WEEK_LEN * 100).toFixed(1) + '%';
+    el.weekBar.style.width = ((G.dayT / DAY_LEN) * 100).toFixed(1) + '%';
+    const ratio = G.demand > 0 ? G.delivered / G.demand : 1;
+    el.gFill.style.width = (clamp(ratio, 0, 1) * 100).toFixed(1) + '%';
+    el.gSpare.style.left = (clamp(G.demand > 0 ? G.supply / G.demand : 1, 0, 1.5) / 1.5 * 100).toFixed(1) + '%';
+    const key = [Math.floor(G.score), G.day, dayLabel(), JSON.stringify(G.res), Object.keys(G.owned).join(), G.targetHit, zoomed,
+      undoStack.length, !!(pendingSnap && pendingSnap.uver !== G.uver), G.map.id, G.paused, G.speed, tool,
+      Math.round(G.delivered), Math.round(G.demand), Math.round(ratio * 50)].join('|');
     if (key === hudCache) return;
     hudCache = key;
-    el.score.textContent = G.score;
-    el.scoreSub.textContent = G.targetHit ? 'MW' : `/ ${fmt(G.map.target)}`;
-    el.cCut.textContent = G.cutOff;
-    el.cut.classList.toggle('alert', G.cutOff > 0);
-    el.cut.setAttribute('aria-label', `${G.cutOff} ${G.cutOff === 1 ? 'generator' : 'generators'} cut off`);
+    el.score.textContent = fmt(G.score);
+    el.scoreSub.innerHTML = G.targetHit ? 'MWh' : `/ ${fmt(G.map.target)}<span class="unit"> MWh</span>`;
+    el.gDel.textContent = Math.round(G.delivered);
+    el.gDem.textContent = `/ ${Math.round(G.demand)} MW`;
+    el.gauge.classList.toggle('short', ratio < 0.995 && ratio >= 0.85);
+    el.gauge.classList.toggle('dark', ratio < 0.85);
     el.btnFit.hidden = !zoomed;
-    el.btnUndo.hidden = !undoStack.length && !(pendingSnap && pendingSnap.ver !== G.gver);
-    el.weekLabel.textContent = `Day ${G.week} · ${dayLabel()}`;
-    el.cRoads.textContent = G.res.roads;
-    el.cRoads.classList.toggle('zero', G.res.roads === 0);
-    // upgrade tools only appear once you've picked them up this game
-    let shown = 3 + (G.map.hills ? 1 : 0);
+    el.btnUndo.hidden = !undoStack.length && !(pendingSnap && pendingSnap.uver !== G.uver);
+    el.weekLabel.innerHTML = `Day ${G.day}<span class="tod"> · ${dayLabel()}</span>`;
+    el.weekLabel.parentElement.setAttribute('aria-label', `Day ${G.day}, ${dayLabel()}`);
+    el.cCable.textContent = G.res.cable;
+    el.cCable.classList.toggle('zero', G.res.cable === 0);
+    let shown = 2;
     document.querySelectorAll('.tool[data-res]').forEach((b) => {
       const k = b.dataset.res;
       const n = G.res[k];
@@ -2560,13 +2067,14 @@
       b.hidden = !(G.owned[k] || n > 0);
       if (!b.hidden) shown++;
     });
-    const bridgesLeft = Math.max(0, G.res.bridges - G.bridgesUsed);
-    const tunnelsLeft = Math.max(0, G.res.tunnels - G.tunnelsUsed);
-    el.cBridges.textContent = bridgesLeft;
-    el.cBridges.classList.toggle('zero', bridgesLeft === 0);
-    el.cTunnels.textContent = tunnelsLeft;
-    el.cTunnels.classList.toggle('zero', tunnelsLeft === 0);
-    el.tunnelTool.hidden = !G.map.hills;
+    el.cSea.textContent = G.res.sea;
+    el.cSea.classList.toggle('zero', G.res.sea === 0);
+    el.cUnder.textContent = G.res.under;
+    el.cUnder.classList.toggle('zero', G.res.under === 0);
+    el.seaTool.hidden = !G.water.some((v) => v);
+    el.underTool.hidden = !G.map.hills;
+    if (!el.seaTool.hidden) shown++;
+    if (!el.underTool.hidden) shown++;
     const bar = el.bottom.querySelector('.toolbar');
     const wasCompact = bar.classList.contains('six');
     bar.classList.toggle('six', shown > 5);
@@ -2592,10 +2100,10 @@
     el.toast.textContent = msg;
     el.toast.classList.add('show');
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => el.toast.classList.remove('show'), 2200);
+    toastTimer = setTimeout(() => el.toast.classList.remove('show'), 2600);
   }
   function flashCount(which) {
-    const target = which === 'bridge' ? $('#bridgeTool') : which === 'tunnel' ? $('#tunnelTool') : document.querySelector('.tool[data-tool="road"]');
+    const target = which === 'sea' ? el.seaTool : which === 'under' ? el.underTool : document.querySelector('.tool[data-tool="cable"]');
     target.classList.remove('flash');
     void target.offsetWidth;
     target.classList.add('flash');
@@ -2603,38 +2111,35 @@
 
   function setTool(t) {
     tool = t;
-    motorStart = -1;
-    moveFrom = null;
+    linkStart = -1;
     hudCache = '';
   }
 
   document.querySelectorAll('.tool').forEach((b) => b.addEventListener('click', () => {
-    if (b.dataset.info === 'bridge') { toast('Sea cables are used automatically. Draw a cable across water.'); return; }
-    if (b.dataset.info === 'tunnel') { toast('Underground cables are used automatically. Draw a cable through a hill.'); return; }
+    if (b.dataset.info === 'sea') { toast('Sea cables are used automatically. Draw a cable across water.'); return; }
+    if (b.dataset.info === 'under') { toast('Underground cables are used automatically. Draw a cable through a hill.'); return; }
     const t = b.dataset.tool;
     const k = b.dataset.res;
     if (k && G.res[k] <= 0) {
-      const names = {
-        rounds: 'transformers', motors: 'express lines', entrances: 'extra substations',
-        dozers: 'excavator uses', moves: 'generator moves', batteries: 'batteries',
-      };
-      toast(`No ${names[k]} left. You can pick more at the end of the day.`);
+      const names = { coal: 'coal plants', solar: 'solar farms', wind: 'wind farms', battery: 'batteries', link: 'interconnectors', guard: 'surge guards' };
+      toast(`No ${names[k]} left. More arrive each day.`);
       return;
     }
     setTool(t);
     const hints = {
-      round: 'Tap a junction to add a transformer.',
-      motor: 'Tap where the express line should go in.',
-      erase: 'Drag over cables to remove them. You get the tiles back.',
-      entrance: 'Tap a town to add another substation.',
-      dozer: 'Tap a hill or water tile to turn it into land.',
-      move: 'Tap a generator, then tap where it should go.',
-      battery: 'Tap a solar or wind generator to keep it running day and night.',
+      cable: 'Drag to lay cable. Drag along a cable again to add a strand.',
+      erase: 'Drag over cables to remove them. Tap a power station to pick it back up.',
+      coal: `Tap open land to build a coal plant. It has to be more than ${COAL_CLEAR} tiles from a town.`,
+      solar: 'Tap open land to build a solar farm.',
+      wind: 'Tap open land to build a wind farm. Next to water, it makes more.',
+      battery: 'Tap open land to build a battery, then cable it to a grid.',
+      link: 'Tap where the interconnector starts.',
+      guard: 'Tap a cable joint to protect it.',
     };
     if (hints[t]) toast(hints[t]);
   }));
 
-  el.btnPause.addEventListener('click', () => { if (!G) return; G.paused = !G.paused; hudCache = ''; if (G.paused) toast('Paused. You can still draw cables.'); });
+  el.btnPause.addEventListener('click', () => { if (!G) return; G.paused = !G.paused; hudCache = ''; if (G.paused) toast('Paused. You can still build.'); });
   el.btnSpeed.addEventListener('click', () => { if (!G) return; G.speed = G.speed === 1 ? 2 : 1; hudCache = ''; });
   $('#btnMenu').addEventListener('click', () => { if (!G) return; save(); openScreen('sMenu'); });
   $('#btnResume').addEventListener('click', () => closeScreen());
@@ -2642,15 +2147,14 @@
   $('#btnMenuMaps').addEventListener('click', () => { save(); showMaps('sMenu'); });
   el.btnFit.addEventListener('click', () => { user.zoom = 1; user.px = 0; user.py = 0; hudCache = ''; });
   el.btnUndo.addEventListener('click', () => { if (G) undo(); });
-  $('#btnShapes').addEventListener('click', () => {
-    shapesOn = !shapesOn;
-    try { localStorage.setItem(SHAPES_KEY, shapesOn ? '1' : '0'); } catch (e) { /* storage unavailable */ }
-    shapesLabel();
-  });
-  function shapesLabel() { $('#btnShapes').textContent = `Colour shapes: ${shapesOn ? 'on' : 'off'}`; }
-  shapesLabel();
-  el.cut.addEventListener('click', () => {
-    toast(G.cutOff ? `${G.cutOff} ${G.cutOff === 1 ? 'generator has' : 'generators have'} no cable to a town of the same colour. Look for pulsing rings.` : 'Every generator can reach its town.');
+  el.gauge.addEventListener('click', () => {
+    if (!G) return;
+    const spare = G.supply - G.demand;
+    toast(`Towns need ${mw(G.demand)} MW and are getting ${mw(G.delivered)} MW. ` +
+      (G.losses > 0.1 ? `${mw(G.losses)} MW is lost as heat in busy cables. ` : '') +
+      (G.delivered < G.demand - 0.05
+        ? (spare > 0 ? 'There is enough power, but not where it’s needed. Join your grids, or connect the dark towns.' : 'Build more power stations, or store power in batteries.')
+        : `Spare: ${mw(Math.max(0, spare))} MW.`));
   });
   $('#btnTgStay').addEventListener('click', () => closeScreen());
   $('#btnMapsBack').addEventListener('click', () => openScreen(mapsReturn || 'sTitle'));
@@ -2679,8 +2183,8 @@
       btn.className = 'mapcard';
       btn.disabled = locked;
       const status = locked
-        ? `Make ${fmt(MAPS[i - 1].target)} MW in ${MAPS[i - 1].name} to unlock`
-        : `Target ${fmt(m.target)} MW${best ? ` · Best ${fmt(best)}` : ''}`;
+        ? `Deliver ${fmt(MAPS[i - 1].target)} MWh in ${MAPS[i - 1].name} to unlock`
+        : `Target ${fmt(m.target)} MWh${best ? ` · Best ${fmt(best)}` : ''}`;
       btn.innerHTML = `<span class="mapnum">${locked ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>' : i + 1}</span>`
         + `<span class="maptext"><b>${m.name}</b><small>${m.blurb}</small><em>${status}</em></span>`;
       if (!locked) btn.addEventListener('click', () => { closeScreen(); startNew(m); });
@@ -2701,6 +2205,7 @@
   function closeScreen() {
     document.querySelectorAll('.screen').forEach((s) => s.classList.remove('show'));
     modal = null;
+    if (pendingMech) { const m = pendingMech; pendingMech = null; mechTip(m.id, m.text); }
   }
   function showHud(on) {
     el.top.hidden = !on;
@@ -2773,7 +2278,7 @@
 
   // ---------------------------------------------------------------- coach card
   // One small card under the top bar, used by the first-game tips and by the
-  // "what's feeding this building" view.
+  // "what's on this town's grid" view.
   let coachCb = null;
   function coach(text, btnLabel, onBtn, showSkip) {
     $('#coachText').textContent = text || '';
@@ -2790,8 +2295,10 @@
   $('#coachSkip').addEventListener('click', () => endTutorial());
 
   // ---------------------------------------------------------------- trouble off screen
-  // When you're zoomed in, a building filling up out of view gets an arrow at
+  // When you're zoomed in, a town losing power out of view gets an arrow at
   // the edge of the screen, pulsing in time with the warning sound. Tap it to look.
+  const urgencyOf = (t) => (t.served < 0.995 && t.dark > 0.02 && G.time - t.born >= GRACE ? clamp(0.25 + 0.75 * t.dark, 0, 1) : 0);
+  const pulsePeriod = (u) => 1.4 - 0.95 * u;
   let edgeArrows = [];
   function drawEdgeArrows() {
     edgeArrows = [];
@@ -2799,10 +2306,10 @@
     const pad = 28;
     const L = pad, R = view.w - view.right - pad, T = view.top + pad, Bt = view.h - view.bottom - pad;
     const cx0 = (L + R) / 2, cy0 = (T + Bt) / 2;
-    for (const d of G.dests) {
-      const u = urgencyOf(d);
+    for (const t of G.towns) {
+      const u = urgencyOf(t);
       if (u <= 0) continue;
-      const px = sx(d.x + 1), py = sy(d.y + 1);
+      const px = sx(tx(t.i) + 0.5), py = sy(ty(t.i) + 0.5);
       if (px > L - pad && px < R + pad && py > T - pad && py < Bt + pad) continue;
       const dx = px - cx0, dy = py - cy0;
       const kx = dx > 0 ? (R - cx0) / dx : dx < 0 ? (L - cx0) / dx : Infinity;
@@ -2810,15 +2317,14 @@
       const k = Math.min(kx, ky);
       const ax = cx0 + dx * k, ay = cy0 + dy * k;
       const phase = (G.time % pulsePeriod(u)) / pulsePeriod(u);
-      const col = COLORS[d.color];
       ctx.save();
       ctx.translate(ax, ay);
       ctx.globalAlpha = (1 - phase) * (0.4 + 0.5 * u);
-      ctx.strokeStyle = col.fill;
+      ctx.strokeStyle = PAL.hot;
       ctx.lineWidth = 3;
       ctx.beginPath(); ctx.arc(0, 0, 16 + phase * 14, 0, Math.PI * 2); ctx.stroke();
       ctx.globalAlpha = 1;
-      ctx.fillStyle = col.fill;
+      ctx.fillStyle = PAL.hot;
       ctx.strokeStyle = '#fff';
       ctx.lineWidth = 2.5;
       ctx.beginPath(); ctx.arc(0, 0, 16, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
@@ -2829,57 +2335,43 @@
       ctx.lineJoin = 'round';
       ctx.beginPath(); ctx.moveTo(-7, 0); ctx.lineTo(7, 0); ctx.moveTo(1, -6); ctx.lineTo(7, 0); ctx.lineTo(1, 6); ctx.stroke();
       ctx.restore();
-      edgeArrows.push({ x: ax, y: ay, d });
+      edgeArrows.push({ x: ax, y: ay, t });
     }
   }
-  function lookAt(d) {
+  function lookAt(t) {
     const b = baseCam();
-    user.px = d.x + 1 - b.x;
-    user.py = d.y + 1 - b.y;
+    user.px = tx(t.i) + 0.5 - b.x;
+    user.py = ty(t.i) + 0.5 - b.y;
     hudCache = '';
   }
 
-  // ---------------------------------------------------------------- what's feeding a building
-  // Tap a building: the game pauses, everything else fades, and the houses and
-  // roads that can reach it light up.
+  // ---------------------------------------------------------------- what's on this town's grid
+  // Tap a town: the game pauses, everything else fades, and its grid lights up.
   let inspect = null;
-  function openInspect(d) {
-    const { dist, prev } = dijkstra(d.ports);
-    const edges = new Set();
-    const served = [], stranded = [];
-    for (const h of G.houses) {
-      if (h.color !== d.color) continue;
-      if (!isFinite(dist[h.i])) { stranded.push(h); continue; }
-      served.push(h);
-      let n = h.i;
-      for (let guard = 0; guard < 400 && prev[n] !== -1 && !d.ports.includes(n); guard++) {
-        const m = prev[n];
-        const e = G.adj[n].get(m);
-        if (e) edges.add(e);
-        n = m;
-      }
-    }
-    inspect = { d, edges, served, stranded, wasPaused: G.paused };
+  function openInspect(t) {
+    solveFlow();
+    G.fver = G.gver;
+    const c = t.grid >= 0 ? G.comps[t.grid] : null;
+    inspect = { t, c, wasPaused: G.paused };
     G.paused = true;
     hudCache = '';
-    const name = COLORS[d.color].name;
-    const onWay = G.cars.filter((c) => c.dest === d && c.leg === 'out' && c.state !== 'home').length;
-    const waiting = Math.round(waitingAt(d));
-    const stuck = d.late || 0;
-    const total = served.length + stranded.length;
-    let text = `${served.length} of ${total} ${name} ${total === 1 ? 'generator' : 'generators'} can reach this town, with ${served.length * CARS_PER_HOUSE} pulses between them. ` +
-      `${onWay} ${onWay === 1 ? 'pulse is' : 'pulses are'} on the way and ${waiting} ${waiting === 1 ? 'unit of demand is' : 'units of demand are'} waiting` +
-      (stuck ? `, ${stuck} of them overloaded. ` : '. ');
-    const off = served.filter((h) => !genOnline(h)).length;
-    if (!served.length) text += `Connect a ${name} generator to it.`;
-    else if (off === served.length) text += 'Every generator feeding it is off right now. Connect a coal generator, or give one a battery.';
-    else if (stuck) text += 'Overloaded cables are holding power up. A transformer or another route would help.';
-    else if (waiting > 2) text += `It needs more ${name} generators connected to it.`;
-    else text += "It's coping fine.";
-    if (off && off < served.length) text += ` ${off} of its generators ${off === 1 ? 'is' : 'are'} off right now.`;
-    if (stranded.length && served.length) text += ` ${stranded.length} ${name} ${stranded.length === 1 ? 'generator has' : 'generators have'} no cable to it yet.`;
+    const pct = Math.round(t.served * 100);
+    let text = `This town needs ${mw(t.need)} MW and is getting ${mw(t.draw)} MW (${pct}%). `;
+    if (!c) text += 'It has no cable yet. Connect it to a power station.';
+    else {
+      const stations = c.gens.filter((g) => g.type !== 'battery').length;
+      text += `Its grid has ${stations} power ${stations === 1 ? 'station' : 'stations'} able to make ${mw(c.avail)} MW` +
+        `${c.gens.some((g) => g.type === 'battery') ? `, plus batteries,` : ''} for ${c.towns.length} ${c.towns.length === 1 ? 'town' : 'towns'} needing ${mw(c.demand)} MW. `;
+      const hot = [...G.edges.values()].filter((e) => G.comp[e.a] === c.id && e.load > 0.9).length;
+      if (!c.gens.length) text += 'Nothing on this grid makes power. Connect a power station to it.';
+      else if (c.served < 0.995) {
+        const off = c.gens.filter((g) => g.type !== 'battery' && g.type !== 'coal' && avail(g) < 0.1).length;
+        text += off ? `${off} of its solar or wind ${off === 1 ? 'farm is' : 'farms are'} making nothing right now. Add coal or a battery, or join this grid to another.` : 'It’s short. Add a power station, or join this grid to another one.';
+      } else if (hot) text += `${hot} ${hot === 1 ? 'cable is' : 'cables are'} close to tripping. Add a strand, or another route.`;
+      else text += 'It’s coping fine.';
+    }
     coach(text, 'Carry on', closeInspect);
-    if (tut && tut.cur && tut.cur.id === 'busy') tut.inspected = true;
+    if (tut && tut.cur && tut.cur.id === 'inspect') tut.inspected = true;
   }
   function closeInspect() {
     if (!inspect) return;
@@ -2890,96 +2382,83 @@
   }
   function drawInspect() {
     if (!inspect) return;
-    const s = cam.s;
-    const { d, edges, served, stranded } = inspect;
-    const col = COLORS[d.color];
-    ctx.fillStyle = 'rgba(24,25,30,0.55)';
+    const { t, c } = inspect;
+    ctx.fillStyle = 'rgba(8,10,18,0.6)';
     ctx.fillRect(0, 0, view.w, view.h);
-    ctx.lineCap = 'round';
-    ctx.strokeStyle = '#fff';
-    ctx.lineWidth = s * 0.62;
-    ctx.beginPath();
-    for (const e of edges) { ctx.moveTo(sx(tx(e.a) + 0.5), sy(ty(e.a) + 0.5)); ctx.lineTo(sx(tx(e.b) + 0.5), sy(ty(e.b) + 0.5)); }
-    ctx.stroke();
-    ctx.strokeStyle = col.fill;
-    ctx.lineWidth = s * 0.46;
-    ctx.stroke();
-    for (const e of edges) {
-      if (!(e.jam > 0.06)) continue;
-      ctx.strokeStyle = `rgba(226,74,40,${Math.min(0.9, e.jam).toFixed(3)})`;
-      ctx.beginPath(); ctx.moveTo(sx(tx(e.a) + 0.5), sy(ty(e.a) + 0.5)); ctx.lineTo(sx(tx(e.b) + 0.5), sy(ty(e.b) + 0.5)); ctx.stroke();
-    }
-    drawDest(d);
-    for (const h of served) drawHouse(h);
-    ctx.setLineDash([s * 0.18, s * 0.14]);
-    ctx.strokeStyle = '#fff';
-    ctx.lineWidth = Math.max(1.5, s * 0.07);
-    for (const h of stranded) {
-      drawHouse(h);
-      ctx.beginPath(); ctx.arc(sx(tx(h.i) + 0.5), sy(ty(h.i) + 0.5), s * 0.62, 0, Math.PI * 2); ctx.stroke();
-    }
-    ctx.setLineDash([]);
+    if (c) {
+      const s = cam.s;
+      ctx.lineCap = 'round';
+      for (const e of G.edges.values()) {
+        if (G.comp[e.a] !== c.id) continue;
+        ctx.strokeStyle = rgba(loadRgb(e.load), 1);
+        ctx.lineWidth = s * (0.12 + 0.07 * e.lvl);
+        ctx.beginPath(); if (e.kind === 'link') linkPath(e); else seg(e); ctx.stroke();
+      }
+      for (const g of c.gens) drawGen(g);
+      for (const x of c.towns) drawTown(x);
+    } else drawTown(t);
   }
 
   // ---------------------------------------------------------------- first game tips
-  // The first time you play Millbrook, tips appear one at a time as each idea
+  // The first time you play Ampton, tips appear one at a time as each idea
   // comes up, instead of everything at once before you've played.
-  const TUT_KEY = 'livewire-tutorial-done';
   let tut = null;
-  const busiest = () => G.dests.reduce((a, d) => (!a || urgencyOf(d) > urgencyOf(a) ? d : a), null);
+  const hottest = () => [...G.edges.values()].reduce((a, e) => (!a || e.load > a.load ? e : a), null);
   const TIPS = [
     {
-      id: 'road', pause: true,
-      text: 'Drag a cable from a generator to the round bolt next to the town.',
-      ready: () => G.time > 0.8,
-      until: () => G.houses.some((h) => !h.cut),
-      hl: () => {
-        const d = G.dests[0];
-        const h = G.houses.find((x) => x.cut);
-        const out = [];
-        if (h) out.push({ x: tx(h.i) + 0.5, y: ty(h.i) + 0.5, r: 0.7 });
-        if (d) out.push({ x: tx(d.ports[0]) + 0.5, y: ty(d.ports[0]) + 0.5, r: 0.7 });
-        return out;
-      },
+      id: 'place', pause: true,
+      text: `This town needs power. Tap Coal in the toolbar, then tap open land to build a coal plant. Coal plants have to be more than ${COAL_CLEAR} tiles from a town.`,
+      ready: () => G.time > 0.3 || G.paused,
+      until: () => G.gens.length > 0,
+      hl: () => G.towns.slice(0, 1).map((t) => ({ x: tx(t.i) + 0.5, y: ty(t.i) + 0.5, r: 1 })),
     },
     {
-      id: 'more', btn: 'Got it',
-      text: 'Power is flowing. Each generator holds two pulses, the white dots on it. A pulse carries power to the town, then goes back empty to recharge. The more generators a town has, the faster it gets power. Connect the others too.',
-      ready: (done) => done.has('road'),
-      until: () => G.cutOff === 0 && G.houses.length > 3,
+      id: 'wire', pause: true,
+      text: 'Now drag a cable from the coal plant to the town.',
+      ready: (done) => done.has('place'),
+      until: () => G.towns.some((t) => t.served > 0),
+      hl: () => G.gens.slice(0, 1).map((g) => ({ x: tx(g.i) + 0.5, y: ty(g.i) + 0.5, r: 0.7 })),
     },
     {
-      id: 'bridge', btn: 'Got it',
-      text: 'This generator can’t be reached over land. Draw straight across the water and a sea cable is built for you. The toolbar shows how many you have left.',
-      ready: (done) => done.has('more') && G.bridgesUsed === 0 && G.houses.some((h) => h.cut && G.time - h.born > 10),
-      until: () => G.bridgesUsed > 0,
+      id: 'flow', btn: 'Got it',
+      text: `The lights are on. Power spreads through every cable it can reach, all at once. One strand of cable carries ${STRAND_CAP} MW. Draw along a cable again to add a strand, up to ${MAX_STRANDS}.`,
+      ready: (done) => done.has('wire'),
     },
     {
-      id: 'busy', pause: true,
-      text: 'The rings round this town mean it’s waiting for power. Tap it to see what feeds it.',
-      ready: (done) => done.has('more') && G.dests.some((d) => urgencyOf(d) > 0),
+      id: 'hot', pause: true, btn: 'Got it',
+      text: 'This cable is near its limit. If it stays red, its breaker trips and its power moves onto the other cables, which can trip too. Add a strand, or give the power another route.',
+      ready: (done) => done.has('flow') && [...G.edges.values()].some((e) => e.load > 0.85),
+      hl: () => { const e = hottest(); return e ? [{ x: (tx(e.a) + tx(e.b)) / 2 + 0.5, y: (ty(e.a) + ty(e.b)) / 2 + 0.5, r: 0.8 }] : []; },
+    },
+    {
+      id: 'gauge', btn: 'Got it',
+      text: 'The gauge at the top shows power reaching towns against what they need. When a grid is short, every town on it dims and a timer starts. If a town goes fully dark, the game ends.',
+      ready: (done) => done.has('flow') && G.time > 20 && G.delivered < G.demand * 0.98,
+    },
+    {
+      id: 'inspect', pause: true,
+      text: 'Tap a town to see its grid and what it needs.',
+      ready: (done) => done.has('gauge') && G.towns.some((t) => t.served < 0.995 && G.time - t.born > GRACE),
       until: () => tut.inspected && !inspect,
-      hl: () => { const d = busiest(); return d ? [{ x: d.x + 1, y: d.y + 1, r: 1.7 }] : []; },
-    },
-    {
-      id: 'jam', pause: true, btn: 'Got it',
-      text: 'Cables turn amber, then red, when they carry too much. Pulses stuck on them still count as waiting. A transformer or a second route helps. You pick an upgrade at the end of each day.',
-      ready: (done) => done.has('more') && [...G.edges.values()].some((e) => e.jam > 0.5),
+      hl: () => G.towns.filter((t) => t.served < 0.995).slice(0, 1).map((t) => ({ x: tx(t.i) + 0.5, y: ty(t.i) + 0.5, r: 1.2 })),
     },
     {
       id: 'end', btn: 'Play on',
-      get text() { return `Reach ${fmt(G.map.target)} MW to unlock the next map. The tips are under How to play in the menu.`; },
-      ready: (done) => done.has('more') && ((done.has('busy') && done.has('jam')) || G.week >= 5),
+      get text() { return `Deliver ${fmt(G.map.target)} MWh to unlock the next map. New power stations and cable arrive each day. The tips are under How to play in the menu.`; },
+      ready: (done) => done.has('flow') && ((done.has('hot') && done.has('gauge')) || G.day >= 4),
     },
   ];
   // One-off cards the first time each new mechanic shows up, on any map.
   let mechCur = null;
+  let pendingMech = null;
   let mechSeen = {};
-  try { mechSeen = JSON.parse(localStorage.getItem('livewire-mech') || '{}'); } catch (e) { /* storage unavailable */ }
-  function mechTip(id, text) {
-    if (mechSeen[id] || mechCur || inspect || modal || (tut && (tut.cur || !tut.done.has('more')))) return false;
+  try { mechSeen = JSON.parse(localStorage.getItem(MECH_KEY) || '{}'); } catch (e) { /* storage unavailable */ }
+  function mechTip(id, text, afterModal) {
+    if (mechSeen[id] || mechCur || G.demo) return false;
+    if (afterModal && modal) { if (!pendingMech) pendingMech = { id, text }; return false; }
+    if (inspect || modal || (tut && (tut.cur || !tut.done.has('flow')))) return false;
     mechSeen[id] = 1;
-    try { localStorage.setItem('livewire-mech', JSON.stringify(mechSeen)); } catch (e) { /* storage unavailable */ }
+    try { localStorage.setItem(MECH_KEY, JSON.stringify(mechSeen)); } catch (e) { /* storage unavailable */ }
     mechCur = id;
     G.paused = true;
     hudCache = '';
@@ -3026,10 +2505,10 @@
     if (!tut || !tut.cur || !tut.cur.hl || inspect || modal) return;
     const s = cam.s;
     const pulse = 0.5 + 0.5 * Math.sin(performance.now() / 220);
-    ctx.strokeStyle = '#24262c';
-    ctx.lineWidth = Math.max(2, s * 0.09);
+    ctx.strokeStyle = '#e6eefc';
+    ctx.lineWidth = Math.max(2, s * 0.08);
     for (const p of tut.cur.hl()) {
-      ctx.globalAlpha = 0.45 + 0.45 * pulse;
+      ctx.globalAlpha = 0.35 + 0.45 * pulse;
       ctx.beginPath(); ctx.arc(sx(p.x), sy(p.y), s * (p.r + 0.12 * pulse), 0, Math.PI * 2); ctx.stroke();
     }
     ctx.globalAlpha = 1;
@@ -3068,7 +2547,7 @@
   // ---------------------------------------------------------------- sound
   // Lo-fi music made live in the browser, so there are no audio files to
   // download and it works offline: a slow four-chord loop, a soft beat and
-  // gentle rain. When a building fills up, a low pulse fades in from its
+  // gentle rain. When a town is losing power, a low pulse fades in from its
   // side of the screen and speeds up as its timer runs down.
   const SOUND_KEY = 'livewire-sound';
   let soundOn = true;
@@ -3102,11 +2581,11 @@
       // melody notes also go into a soft echo
       const echo = ctx.createDelay(1);
       echo.delayTime.value = BEAT * 0.75;
-      const feedback = ctx.createGain();
-      feedback.gain.value = 0.35;
+      const feedbackGain = ctx.createGain();
+      feedbackGain.gain.value = 0.35;
       const wet = ctx.createGain();
       wet.gain.value = 0.45;
-      echo.connect(feedback); feedback.connect(echo); echo.connect(wet); wet.connect(snd.tone);
+      echo.connect(feedbackGain); feedbackGain.connect(echo); echo.connect(wet); wet.connect(snd.tone);
       snd.melody = ctx.createGain();
       snd.melody.connect(snd.music); snd.melody.connect(echo);
       // white noise for the brushes and hi-hat
@@ -3189,10 +2668,10 @@
   }
 
   // One half-beat of music. Off-beats are pushed slightly late for a lazy swing.
-  function playStep(t, step) {
-    const off = step % 2 === 1;
-    const beat = (step >> 1) % 4;
-    const chord = CHORDS[(step >> 3) % 4];
+  function playStep(t, stepN) {
+    const off = stepN % 2 === 1;
+    const beat = (stepN >> 1) % 4;
+    const chord = CHORDS[(stepN >> 3) % 4];
     const tt = off ? t + BEAT * 0.08 : t;
     if (!off && beat === 0) {
       for (const n of chord) {
@@ -3212,26 +2691,31 @@
     }
   }
 
-  // Grid sound effects: a zap when a breaker trips, a rising chime on reset,
-  // and soft tones as the sun sets and rises.
+  // Grid sound effects: a zap when a breaker trips, a harsher one in a cascade,
+  // a chime on reset, a click when building, and soft tones at dusk and dawn.
   function sfx(kind) {
     if (!soundOn || !snd.ctx || snd.ctx.state !== 'running' || !snd.master) return;
     const t = snd.ctx.currentTime + 0.02;
     const out = snd.master;
-    if (kind === 'trip') {
-      noiseHit(t, 'highpass', 2500, 0.22, 0.18, out);
+    if (kind === 'trip' || kind === 'cascade') {
+      noiseHit(t, 'highpass', 2500, kind === 'cascade' ? 0.3 : 0.22, 0.18, out);
       const o = snd.ctx.createOscillator();
       o.type = 'sawtooth';
-      o.frequency.setValueAtTime(520, t);
-      o.frequency.exponentialRampToValueAtTime(70, t + 0.35);
+      o.frequency.setValueAtTime(kind === 'cascade' ? 380 : 520, t);
+      o.frequency.exponentialRampToValueAtTime(kind === 'cascade' ? 40 : 70, t + 0.35);
       const g = snd.ctx.createGain();
-      g.gain.setValueAtTime(0.09, t);
+      g.gain.setValueAtTime(kind === 'cascade' ? 0.12 : 0.09, t);
       g.gain.exponentialRampToValueAtTime(0.0001, t + 0.4);
       o.connect(g); g.connect(out);
       o.start(t); o.stop(t + 0.45);
     } else if (kind === 'reset') {
       voice('sine', hz(60), t, 0.35, 0.09, 0.01, out);
       voice('sine', hz(67), t + 0.09, 0.5, 0.09, 0.01, out);
+    } else if (kind === 'place') {
+      voice('triangle', hz(57), t, 0.25, 0.08, 0.005, out);
+      voice('sine', hz(69), t + 0.05, 0.3, 0.05, 0.005, out);
+    } else if (kind === 'strand') {
+      voice('sine', hz(76), t, 0.18, 0.05, 0.005, out);
     } else if (kind === 'dusk') {
       voice('sine', hz(72), t, 0.9, 0.06, 0.05, out);
       voice('sine', hz(65), t + 0.25, 1.2, 0.06, 0.05, out);
@@ -3241,7 +2725,7 @@
     }
   }
 
-  // A soft low thump and a chime, panned towards the building that's filling up.
+  // A soft low thump and a chime, panned towards the town that's losing power.
   function pulse(t, u, pan) {
     let out = snd.master;
     if (snd.ctx.createStereoPanner) {
@@ -3254,19 +2738,17 @@
     const chord = CHORDS[(snd.step >> 3) % 4];
     voice('sine', hz(chord[0] + 24), t, 0.7, 0.03 + 0.07 * u, 0.01, out);
     if (u >= 0.4) {
-      // past the limit: a second, higher chime, and the music dips so it cuts through
       voice('sine', hz(chord[0] + 31), t + 0.09, 0.6, 0.02 + 0.06 * u, 0.01, out);
       snd.music.gain.setTargetAtTime(0.7, t, 0.03);
       snd.music.gain.setTargetAtTime(1, t + 0.25, 0.3);
     }
-    // close to failing: the thump doubles up like a heartbeat
     if (u >= 0.7) kick(t + 0.2, 0.3 * u, out);
   }
 
   function audioTick() {
-    const ctx = snd.ctx;
-    if (!ctx || ctx.state !== 'running') return;
-    const now = ctx.currentTime;
+    const actx = snd.ctx;
+    if (!actx || actx.state !== 'running') return;
+    const now = actx.currentTime;
     const live = G && !G.over && !modal && !G.paused;
     snd.master.gain.setTargetAtTime(!soundOn ? 0 : live ? 0.55 : 0.22, now, 0.4);
     if (snd.next < now) snd.next = now + 0.05;
@@ -3275,13 +2757,11 @@
       snd.step = (snd.step + 1) % 32;
       snd.next += BEAT / 2;
     }
-    // How urgent is the fullest building? Starts once 3 visitors are waiting,
-    // then climbs with the timer once it's past the limit.
     let u = 0, pan = 0;
     if (live) {
-      for (const d of G.dests) {
-        const v = urgencyOf(d);
-        if (v > u) { u = v; pan = clamp((sx(d.x + 1) / view.w) * 2 - 1, -1, 1) * 0.6; }
+      for (const t of G.towns) {
+        const v = urgencyOf(t);
+        if (v > u) { u = v; pan = clamp((sx(tx(t.i) + 0.5) / view.w) * 2 - 1, -1, 1) * 0.6; }
       }
     }
     if (u > 0.01 && now >= snd.pulseAt) {
@@ -3329,6 +2809,7 @@
     } else {
       acc = 0;
     }
+    if (G && G.fver !== G.gver) { solveFlow(); G.fver = G.gver; }
     updateCamera(dt);
     render();
     updateHud();
@@ -3337,13 +2818,42 @@
     requestAnimationFrame(frame);
   }
 
+  // A small working grid behind the title screen.
+  function demoGrid() {
+    const t = G.towns[0];
+    if (!t) return;
+    const spots = [];
+    for (let dy = -4; dy <= 4; dy++) for (let dx = -5; dx <= 5; dx++) {
+      const x = tx(t.i) + dx, y = ty(t.i) + dy;
+      if (!inB(x, y)) continue;
+      const i = idx(x, y);
+      if (cheb(i, t.i) >= 3 && placeCheck('coal', i) === 'ok') spots.push(i);
+    }
+    if (!spots.length) return;
+    const g = spots[Math.floor(spots.length / 2)];
+    G.res.coal = 1;
+    placeGen('coal', g);
+    const st = newStroke();
+    let cur = g, guard = 0;
+    while (cur !== t.i && guard++ < 20) { const nx = stepToward(cur, t.i); if (tryConnect(cur, nx, st) !== 'ok') break; cur = nx; }
+    for (const x of G.gens) x.born = -10;
+    for (const x of G.towns) { x.born = -99; x.lit = 1; }
+    G.dayT = DAY_LEN * 0.6;
+    solveFlow();
+  }
+
   measure();
-  // Show a live map behind the title screen.
   newGame(MAPS[0]);
   G.demo = true;
+  demoGrid();
   showTitle();
   requestAnimationFrame(frame);
 
   // exposed for testing in the browser console
-  window.__livewire = { get G() { return G; }, get tut() { return tut; }, get inspect() { return inspect; }, tutTick, openInspect, closeInspect, render, snd, audioStart, audioTick, landAreas, cam, step, tryConnect, idx, findPath, save, load, sx, sy, MAPS, user, startNew, getProgress, addEntrance, bulldoze, moveHouse, canGo, nodeFor, deck, showUpgrade, dispatch };
+  window.__livewire = {
+    get G() { return G; }, get tut() { return tut; }, get inspect() { return inspect; }, MAPS, GEN,
+    step, render, solveFlow, tryConnect, endStroke, newStroke, placeGen, placeCheck, placeLink, placeGuard, eraseAt,
+    restoreTrip, resetTrip, startNew, save, load, undo, showUpgrade, openInspect, closeInspect, idx, tx, ty, cheb, rough, capOf,
+    getProgress, sx, sy, cam, user, dayPhase, sun,
+  };
 })();
